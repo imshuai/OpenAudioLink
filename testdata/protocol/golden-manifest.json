@@ -1,0 +1,24 @@
+{
+  "byteOrder": "big-endian",
+  "files": {
+    "invalid-length.bin": {
+      "length": 24,
+      "sha256": "f6f4a31d9e3849dea0dd17b69c6d9aa45f5bc0e9ee2be63f1c6e50cf988974e1"
+    },
+    "invalid-magic.bin": {
+      "length": 53,
+      "sha256": "4ceb3d7469b8ddb9eeca51eb3b381898a6d2f0e273aac3f801138af46338555b"
+    },
+    "valid-audio-aac.bin": {
+      "length": 47,
+      "sha256": "8a7c75d16f1c24836f598484e61258a8f143625cddeee7baefbd3655f1b4decb"
+    },
+    "valid-hello.bin": {
+      "length": 53,
+      "sha256": "724fdbae8f8bdfe546aa2bbb593872289d091a748d662120e1852b08bf2b2e7f"
+    }
+  },
+  "headerSize": 24,
+  "maxPacketSize": 65536,
+  "protocol": "1.0"
+}
