@@ -150,6 +150,19 @@ Null termination is never used.
 
 Every string is length-prefixed.
 
+String layout:
+
+| Offset | Size | Field |
+| --- | --- | --- |
+| 0 | 2 | Byte Length |
+| 2 | N | UTF-8 Bytes |
+
+- `Byte Length` is an unsigned 16-bit integer encoded in Big Endian.
+- The length counts only the UTF-8 bytes and does not include the two-byte length field.
+- Null termination is prohibited.
+- Recommended maximum string length: 512 bytes.
+- A receiver must reject strings whose declared length exceeds the remaining payload.
+
 ---
 
 # Packet Structure
