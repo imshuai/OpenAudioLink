@@ -1,0 +1,24 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.pyc
+
+# Windows / .NET
+receiver-windows/**/bin/
+receiver-windows/**/obj/
+receiver-windows/.vs/
+*.user
+*.suo
+
+# Android / Gradle
+sender-android/.gradle/
+sender-android/local.properties
+sender-android/**/build/
+
+# Logs
+*.log
