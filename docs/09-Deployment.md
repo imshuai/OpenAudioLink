@@ -31,7 +31,7 @@ Version 1 supports:
 | Windows 8.1 | ✔ |
 | Windows 10 | ✔ |
 | Windows 11 | ✔ |
-| Android 8.0+ | ✔ |
+| Android 10+ | ✔ |
 
 Future versions may add:
 
@@ -114,37 +114,37 @@ NSIS is a valid alternative, but Inno Setup offers:
 Recommended deployment:
 
 ```
-Self-contained
+.NET Framework 4.8 application packaged by installer
 ```
 
 Advantages:
 
-- No .NET runtime installation
-- Predictable behavior
-- Easier support
-- Offline installation
+- Compatible with Windows 7 SP1
+- Small application binaries
+- Mature WinForms support
+- Predictable desktop behavior
 
-Trade-off:
+Installer responsibility:
 
-Larger installer size.
+- Detect .NET Framework 4.8
+- Show a clear error or install the prerequisite package
+- Continue to support offline installation when the prerequisite is bundled
 
 ---
 
-# Self-contained Build
+# Framework-dependent Build
 
-Publish example:
+Build target:
 
-```bash
-dotnet publish
+```text
+.NET Framework 4.8
 
--c Release
+x64
 
--r win-x64
-
---self-contained true
+Release
 ```
 
-The installer includes all required runtime components.
+The installer includes the application files and verifies that the required framework is present.
 
 ---
 
@@ -923,7 +923,7 @@ Checkout
 
 ↓
 
-Setup .NET SDK
+Setup MSBuild / .NET Framework 4.8 SDK
 
 ↓
 
@@ -935,7 +935,7 @@ Build
 
 ↓
 
-Publish Self-contained
+Build Release Binaries
 
 ↓
 

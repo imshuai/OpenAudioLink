@@ -1156,7 +1156,7 @@ Does not include:
 - Protocol Header
 - Audio Payload Header
 
-Receivers should verify that Encoded Size matches Payload Length before decoding.
+Receivers should verify that `Payload Length == 19 + Encoded Size` before decoding.
 
 ---
 

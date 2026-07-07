@@ -16,7 +16,7 @@ Windows 11
 
 Framework
 
-.NET 8
+.NET Framework 4.8
 
 Language
 
@@ -588,7 +588,7 @@ Graceful shutdown prevents audio artifacts and resource leaks.
 
 # Application Host
 
-Version 1 adopts the .NET Generic Host architecture.
+Version 1 uses a lightweight host architecture compatible with .NET Framework 4.8.
 
 Benefits:
 
@@ -2710,12 +2710,12 @@ The dependency graph should remain acyclic.
 
 ---
 
-# Generic Host Configuration
+# Application Host Configuration
 
 Recommended startup sequence.
 
 ```text
-Host.CreateDefaultBuilder()
+Create Application Host
 
 ↓
 
@@ -2784,7 +2784,7 @@ Recommended dependencies.
 |----------|---------|
 | Audio | NAudio |
 | mDNS | Makaretu.Dns.Multicast |
-| Hosting | Microsoft.Extensions.Hosting |
+| Hosting | Lightweight application host or Microsoft.Extensions.Hosting version compatible with .NET Framework 4.8 |
 | DI | Microsoft.Extensions.DependencyInjection |
 | Configuration | Microsoft.Extensions.Configuration.Json |
 | Logging | Serilog |

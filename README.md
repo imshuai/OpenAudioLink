@@ -828,7 +828,6 @@ docs/
 
 11-Roadmap.md
 
-12-FAQ.md
 ```
 
 The **docs** directory contains documentation intended for humans.
