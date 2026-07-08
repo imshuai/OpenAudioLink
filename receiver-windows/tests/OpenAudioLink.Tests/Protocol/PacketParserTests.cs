@@ -50,6 +50,18 @@ namespace OpenAudioLink.Tests.Protocol
             AudioPayloadValidator.ValidateAacPayload(payload);
         }
 
+        [TestMethod]
+        public void ParseHeader_Phase1aFixtures_ReturnExpectedTypes()
+        {
+            Assert.AreEqual(ProtocolConstants.PacketTypeWelcome, PacketParser.ParseHeader(ReadFixture("valid-welcome.bin")).PacketType);
+            Assert.AreEqual(ProtocolConstants.PacketTypeStartStream, PacketParser.ParseHeader(ReadFixture("valid-start-stream.bin")).PacketType);
+            Assert.AreEqual(ProtocolConstants.PacketTypeStreamReady, PacketParser.ParseHeader(ReadFixture("valid-stream-ready.bin")).PacketType);
+            Assert.AreEqual(ProtocolConstants.PacketTypePing, PacketParser.ParseHeader(ReadFixture("valid-ping.bin")).PacketType);
+            Assert.AreEqual(ProtocolConstants.PacketTypePong, PacketParser.ParseHeader(ReadFixture("valid-pong.bin")).PacketType);
+            Assert.AreEqual(ProtocolConstants.PacketTypeStopStream, PacketParser.ParseHeader(ReadFixture("valid-stop-stream.bin")).PacketType);
+            Assert.AreEqual(ProtocolConstants.PacketTypeError, PacketParser.ParseHeader(ReadFixture("valid-error.bin")).PacketType);
+        }
+
         private static byte[] ReadFixture(string name)
         {
             DirectoryInfo directory = new DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory);
