@@ -13,9 +13,37 @@
       "length": 47,
       "sha256": "8a7c75d16f1c24836f598484e61258a8f143625cddeee7baefbd3655f1b4decb"
     },
+    "valid-error.bin": {
+      "length": 46,
+      "sha256": "e9b6110560fe3507930ac7183e274675f9ad46fcf6fd739897b827843dca223d"
+    },
     "valid-hello.bin": {
       "length": 53,
       "sha256": "724fdbae8f8bdfe546aa2bbb593872289d091a748d662120e1852b08bf2b2e7f"
+    },
+    "valid-ping.bin": {
+      "length": 36,
+      "sha256": "fd5497ea8ee3f30d93aa157228db6734f0cd9425f2538ac70342d63058c35250"
+    },
+    "valid-pong.bin": {
+      "length": 36,
+      "sha256": "d3f5af05453eb4dc67767900392cf7e18848f60bd3c61c4de497a990ba35f4de"
+    },
+    "valid-start-stream.bin": {
+      "length": 36,
+      "sha256": "4cef75f0778f6e7719354f1f4fd620e36b8b34a1a0c873c843c61b25edc926ad"
+    },
+    "valid-stop-stream.bin": {
+      "length": 24,
+      "sha256": "2bdbd66ac7d8d0cc263c57c51eebda15ba5f3e58c167b2eb7df4977748aa6d30"
+    },
+    "valid-stream-ready.bin": {
+      "length": 31,
+      "sha256": "0312fa9f043a46386dcbd0a06a2397be155e57ba6fab8184cc40ae173ac43f4b"
+    },
+    "valid-welcome.bin": {
+      "length": 52,
+      "sha256": "c49a73dc8e790e68c6f2db3583cf34dc86d0878cad1d2de20fc89ee0975ec745"
     }
   },
   "headerSize": 24,

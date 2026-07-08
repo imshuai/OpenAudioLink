@@ -16,10 +16,22 @@ MINOR = 0
 HEADER_SIZE = 24
 MAX_PACKET_SIZE = 65536
 PACKET_HELLO = 0x01
+PACKET_WELCOME = 0x02
+PACKET_START_STREAM = 0x03
+PACKET_STREAM_READY = 0x04
 PACKET_AUDIO = 0x05
+PACKET_STOP_STREAM = 0x06
+PACKET_PING = 0x07
+PACKET_PONG = 0x08
+PACKET_ERROR = 0x09
 CODEC_AAC_LC = 1
 PLATFORM_ANDROID = 1
+PLATFORM_WINDOWS = 2
 CAP_AAC_SUPPORTED = 1
+WELCOME_SUCCESS = 0
+STREAM_READY_SUCCESS = 0
+ERROR_UNSUPPORTED_CODEC = 1003
+ERROR_SEVERITY_RECOVERABLE = 2
 
 
 def pack_header(packet_type: int, sequence: int, timestamp: int, payload: bytes) -> bytes:
@@ -56,6 +68,54 @@ def hello_payload() -> bytes:
     )
 
 
+def welcome_payload() -> bytes:
+    return b"".join(
+        [
+            struct.pack(">B", WELCOME_SUCCESS),
+            pack_string("Windows PC"),
+            pack_string("1.0.0"),
+            struct.pack(">Q", 0x0102030405060708),
+        ]
+    )
+
+
+def start_stream_payload() -> bytes:
+    return b"".join(
+        [
+            struct.pack(">B", CODEC_AAC_LC),
+            struct.pack(">I", 48000),
+            struct.pack(">B", 2),
+            struct.pack(">I", 192000),
+            struct.pack(">H", 20),
+        ]
+    )
+
+
+def stream_ready_payload() -> bytes:
+    return b"".join(
+        [
+            struct.pack(">B", STREAM_READY_SUCCESS),
+            struct.pack(">B", CODEC_AAC_LC),
+            struct.pack(">I", 48000),
+            struct.pack(">B", 2),
+        ]
+    )
+
+
+def ping_payload() -> bytes:
+    return struct.pack(">I", 5) + struct.pack(">Q", 123456005)
+
+
+def error_payload() -> bytes:
+    return b"".join(
+        [
+            struct.pack(">H", ERROR_UNSUPPORTED_CODEC),
+            struct.pack(">B", ERROR_SEVERITY_RECOVERABLE),
+            pack_string("Unsupported codec"),
+        ]
+    )
+
+
 def audio_payload() -> bytes:
     encoded = bytes([0x11, 0x22, 0x33, 0x44])
     return b"".join(
@@ -72,6 +132,13 @@ def audio_payload() -> bytes:
 
 def packet_set() -> dict[str, bytes]:
     valid_hello = pack_header(PACKET_HELLO, 1, 123456000, hello_payload())
+    valid_welcome = pack_header(PACKET_WELCOME, 2, 123456001, welcome_payload())
+    valid_start_stream = pack_header(PACKET_START_STREAM, 3, 123456002, start_stream_payload())
+    valid_stream_ready = pack_header(PACKET_STREAM_READY, 4, 123456003, stream_ready_payload())
+    valid_ping = pack_header(PACKET_PING, 5, 123456004, ping_payload())
+    valid_pong = pack_header(PACKET_PONG, 6, 123456004, ping_payload())
+    valid_stop_stream = pack_header(PACKET_STOP_STREAM, 7, 123456006, b"")
+    valid_error = pack_header(PACKET_ERROR, 8, 123456007, error_payload())
     valid_audio = pack_header(PACKET_AUDIO, 2, 123456789, audio_payload())
     invalid_length = b"".join(
         [
@@ -87,6 +154,13 @@ def packet_set() -> dict[str, bytes]:
     )
     return {
         "valid-hello.bin": valid_hello,
+        "valid-welcome.bin": valid_welcome,
+        "valid-start-stream.bin": valid_start_stream,
+        "valid-stream-ready.bin": valid_stream_ready,
+        "valid-ping.bin": valid_ping,
+        "valid-pong.bin": valid_pong,
+        "valid-stop-stream.bin": valid_stop_stream,
+        "valid-error.bin": valid_error,
         "valid-audio-aac.bin": valid_audio,
         "invalid-magic.bin": b"BAD!" + valid_hello[4:],
         "invalid-length.bin": invalid_length,
