@@ -845,6 +845,16 @@ Payload:
 
 If Result indicates success, audio transmission may begin immediately.
 
+Result values:
+
+| Value | Meaning |
+|------:|---------|
+| 0 | Success |
+| 1 | Unsupported Codec |
+| 2 | Unsupported Format |
+| 3 | Receiver Not Ready |
+| 4 | Internal Error |
+
 ---
 
 # Codec Enumeration

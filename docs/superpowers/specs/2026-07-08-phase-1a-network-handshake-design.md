@@ -127,6 +127,16 @@ Negotiated Sample Rate  UInt32
 Negotiated Channels     UInt8
 ```
 
+`STREAM_READY.Result` values:
+
+| Value | Meaning |
+|------:|---------|
+| `0` | Success |
+| `1` | Unsupported Codec |
+| `2` | Unsupported Format |
+| `3` | Receiver Not Ready |
+| `4` | Internal Error |
+
 `PING` and `PONG` payload:
 
 ```text
@@ -229,7 +239,7 @@ Phase 1-A keeps timeout configuration local to the network classes. A persistent
 Error handling rules:
 
 - Unsupported protocol major returns `WELCOME(Result = Unsupported Protocol)` or closes the connection.
-- Unsupported codec returns `ERROR(Unsupported Codec)` or `STREAM_READY(Result != Success)`.
+- Unsupported codec returns `STREAM_READY(Result = Unsupported Codec)`.
 - Malformed packet returns `ERROR(Invalid Packet)` when possible, then closes.
 - Receiver busy returns `WELCOME(Result = Receiver Busy)`, then closes the new connection.
 - Any unexpected socket failure releases session ownership.
@@ -238,7 +248,7 @@ Error handling rules:
 
 Tests are added at the smallest runnable boundary:
 
-1. Protocol serialization tests compare exact bytes for header, strings, `HELLO`, `WELCOME`, `START_STREAM`, `PING`, and `STOP_STREAM`.
+1. Protocol serialization tests compare exact bytes for header, strings, `HELLO`, `WELCOME`, `START_STREAM`, `STREAM_READY`, `PING`, `PONG`, `STOP_STREAM`, and `ERROR`.
 2. Parser tests cover the new packet types and invalid payload lengths.
 3. Session tests verify valid order and invalid order transitions.
 4. Receiver tests cover idle accept, busy reject, malformed packet close, and `PING -> PONG` echo.
