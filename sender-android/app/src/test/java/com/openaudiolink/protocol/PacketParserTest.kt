@@ -52,6 +52,33 @@ class PacketParserTest {
     }
 
     @Test
+    fun validateAacPayload_tooShort_throws() {
+        assertThrows(PacketParseException::class.java) {
+            AudioPayloadValidator.validateAacPayload(ByteArray(ProtocolConstants.AudioPayloadHeaderSize - 1))
+        }
+    }
+
+    @Test
+    fun validateAacPayload_unsupportedCodec_throws() {
+        val payload = validAudioPayload()
+        payload[0] = ProtocolConstants.CodecOpus.toByte()
+
+        assertThrows(PacketParseException::class.java) {
+            AudioPayloadValidator.validateAacPayload(payload)
+        }
+    }
+
+    @Test
+    fun validateAacPayload_encodedSizeMismatch_throws() {
+        val payload = validAudioPayload()
+        payload[18] = 0x05
+
+        assertThrows(PacketParseException::class.java) {
+            AudioPayloadValidator.validateAacPayload(payload)
+        }
+    }
+
+    @Test
     fun parseHeader_phase1aPacketTypesAndPayloads_matchFixtures() {
         val cases = listOf(
             Triple("valid-hello.bin", ProtocolConstants.PacketTypeHello, "000d416e64726f69642050686f6e650005312e302e3001000100000001"),
@@ -78,6 +105,8 @@ class PacketParserTest {
             PacketParser.payload(readFixture("invalid-length.bin"))
         }
     }
+
+    private fun validAudioPayload(): ByteArray = PacketParser.payload(readFixture("valid-audio-aac.bin"))
 
     private fun hex(value: String): ByteArray = value.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
 

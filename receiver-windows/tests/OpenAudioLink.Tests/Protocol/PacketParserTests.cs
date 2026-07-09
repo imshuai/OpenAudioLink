@@ -51,6 +51,30 @@ namespace OpenAudioLink.Tests.Protocol
         }
 
         [TestMethod]
+        public void ValidateAacPayload_TooShort_Throws()
+        {
+            Assert.ThrowsException<PacketParseException>(() => AudioPayloadValidator.ValidateAacPayload(new byte[ProtocolConstants.AudioPayloadHeaderSize - 1]));
+        }
+
+        [TestMethod]
+        public void ValidateAacPayload_UnsupportedCodec_Throws()
+        {
+            byte[] payload = ValidAudioPayload();
+            payload[0] = ProtocolConstants.CodecOpus;
+
+            Assert.ThrowsException<PacketParseException>(() => AudioPayloadValidator.ValidateAacPayload(payload));
+        }
+
+        [TestMethod]
+        public void ValidateAacPayload_EncodedSizeMismatch_Throws()
+        {
+            byte[] payload = ValidAudioPayload();
+            payload[18] = 0x05;
+
+            Assert.ThrowsException<PacketParseException>(() => AudioPayloadValidator.ValidateAacPayload(payload));
+        }
+
+        [TestMethod]
         public void ParseHeader_Phase1aFixtures_ReturnExpectedTypesAndPayloads()
         {
             AssertFixture("valid-hello.bin", ProtocolConstants.PacketTypeHello, "000d416e64726f69642050686f6e650005312e302e3001000100000001");
@@ -75,6 +99,11 @@ namespace OpenAudioLink.Tests.Protocol
 
             Assert.AreEqual(packetType, PacketParser.ParseHeader(packet).PacketType);
             CollectionAssert.AreEqual(FromHex(payloadHex), PacketParser.Payload(packet));
+        }
+
+        private static byte[] ValidAudioPayload()
+        {
+            return PacketParser.Payload(ReadFixture("valid-audio-aac.bin"));
         }
 
         private static byte[] FromHex(string hex)
