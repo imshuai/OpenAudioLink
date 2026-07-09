@@ -4,10 +4,10 @@ import com.openaudiolink.protocol.ProtocolConstants
 import java.net.InetSocketAddress
 import java.net.Socket
 
-object TcpHandshakeClient {
+class TcpHandshakeClient {
     fun connect(host: String, port: Int = ProtocolConstants.DefaultPort): Boolean = Socket().use { socket ->
         socket.connect(InetSocketAddress(host, port), 10_000)
         socket.soTimeout = 15_000
-        HandshakeClient.run(socket.getInputStream(), socket.getOutputStream())
+        HandshakeClient().run(socket.getInputStream(), socket.getOutputStream())
     }
 }

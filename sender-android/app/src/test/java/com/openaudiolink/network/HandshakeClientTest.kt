@@ -7,22 +7,20 @@ import com.openaudiolink.protocol.PacketWriter
 import com.openaudiolink.protocol.ProtocolConstants
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
+import org.junit.Assert.*
+import org.junit.Test
 
 class HandshakeClientTest {
     @Test
     fun runWritesHandshakePacketsOnSuccess() {
         val input = ByteArrayInputStream(
             PacketWriter.writePacket(ProtocolConstants.PacketTypeWelcome, 1, 1, HandshakePayloads.welcome(ProtocolConstants.ResultSuccess, "receiver", "1.0", 7)) +
-                PacketWriter.writePacket(ProtocolConstants.PacketTypeStreamReady, 2, 2, HandshakePayloads.streamReady(ProtocolConstants.StreamResultSuccess, ProtocolConstants.CodecPcm, 48000, 2)) +
+                PacketWriter.writePacket(ProtocolConstants.PacketTypeStreamReady, 2, 2, HandshakePayloads.streamReady(ProtocolConstants.StreamResultSuccess, ProtocolConstants.CodecAacLc, 48000, 2)) +
                 PacketWriter.writePacket(ProtocolConstants.PacketTypePong, 3, 3, HandshakePayloads.ping(5, 123456005))
         )
         val output = ByteArrayOutputStream()
 
-        assertTrue(HandshakeClient.run(input, output))
+        assertTrue(HandshakeClient().run(input, output))
 
         val written = ByteArrayInputStream(output.toByteArray())
         assertEquals(ProtocolConstants.PacketTypeHello, PacketParser.parseHeader(PacketReader.readPacket(written)).packetType)
@@ -38,6 +36,6 @@ class HandshakeClientTest {
         )
         val output = ByteArrayOutputStream()
 
-        assertFalse(HandshakeClient.run(input, output))
+        assertFalse(HandshakeClient().run(input, output))
     }
 }
