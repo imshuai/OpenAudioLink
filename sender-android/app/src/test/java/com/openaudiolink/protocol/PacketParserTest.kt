@@ -51,6 +51,25 @@ class PacketParserTest {
         AudioPayloadValidator.validateAacPayload(payload)
     }
 
+    @Test
+    fun parseHeader_phase1aPacketTypes_matchFixtures() {
+        val cases = mapOf(
+            "valid-hello.bin" to ProtocolConstants.PacketTypeHello,
+            "valid-welcome.bin" to ProtocolConstants.PacketTypeWelcome,
+            "valid-start-stream.bin" to ProtocolConstants.PacketTypeStartStream,
+            "valid-stream-ready.bin" to ProtocolConstants.PacketTypeStreamReady,
+            "valid-audio-aac.bin" to ProtocolConstants.PacketTypeAudio,
+            "valid-stop-stream.bin" to ProtocolConstants.PacketTypeStopStream,
+            "valid-ping.bin" to ProtocolConstants.PacketTypePing,
+            "valid-pong.bin" to ProtocolConstants.PacketTypePong,
+            "valid-error.bin" to ProtocolConstants.PacketTypeError,
+        )
+
+        cases.forEach { (fixture, packetType) ->
+            assertEquals(packetType, PacketParser.parseHeader(readFixture(fixture)).packetType)
+        }
+    }
+
     private fun readFixture(name: String): ByteArray {
         var directory: File? = File(System.getProperty("user.dir")).absoluteFile
         while (directory != null) {
