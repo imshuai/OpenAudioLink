@@ -12,6 +12,7 @@ import java.io.OutputStream
 
 class HandshakeClient {
     private val pingPayload = HandshakePayloads.ping(5, 123456005)
+    private val fakeAudioPayload = HandshakePayloads.audio(ProtocolConstants.CodecAacLc, 1, 123456789, 20, byteArrayOf(0x11, 0x22, 0x33, 0x44))
 
     fun run(input: InputStream, output: OutputStream): Boolean {
         try {
@@ -23,12 +24,15 @@ class HandshakeClient {
             output.flush()
             if (!readResult(input, ProtocolConstants.PacketTypeStreamReady, ProtocolConstants.StreamResultSuccess)) return false
 
-            output.write(PacketWriter.writePacket(ProtocolConstants.PacketTypePing, 3, 123456004, pingPayload))
+            output.write(PacketWriter.writePacket(ProtocolConstants.PacketTypeAudio, 3, 123456789, fakeAudioPayload))
+            output.flush()
+
+            output.write(PacketWriter.writePacket(ProtocolConstants.PacketTypePing, 4, 123456004, pingPayload))
             output.flush()
             val pong = PacketReader.readPacket(input)
             if (PacketParser.parseHeader(pong).packetType != ProtocolConstants.PacketTypePong || !PacketParser.payload(pong).contentEquals(pingPayload)) return false
 
-            output.write(PacketWriter.writePacket(ProtocolConstants.PacketTypeStopStream, 4, 123456006))
+            output.write(PacketWriter.writePacket(ProtocolConstants.PacketTypeStopStream, 5, 123456006))
             output.flush()
             return true
         } catch (_: IOException) {

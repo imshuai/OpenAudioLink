@@ -25,6 +25,12 @@ class HandshakeClientTest {
         val written = ByteArrayInputStream(output.toByteArray())
         assertEquals(ProtocolConstants.PacketTypeHello, PacketParser.parseHeader(PacketReader.readPacket(written)).packetType)
         assertEquals(ProtocolConstants.PacketTypeStartStream, PacketParser.parseHeader(PacketReader.readPacket(written)).packetType)
+        val audio = PacketReader.readPacket(written)
+        assertEquals(ProtocolConstants.PacketTypeAudio, PacketParser.parseHeader(audio).packetType)
+        assertArrayEquals(
+            HandshakePayloads.audio(ProtocolConstants.CodecAacLc, 1, 123456789, 20, byteArrayOf(0x11, 0x22, 0x33, 0x44)),
+            PacketParser.payload(audio)
+        )
         assertEquals(ProtocolConstants.PacketTypePing, PacketParser.parseHeader(PacketReader.readPacket(written)).packetType)
         assertEquals(ProtocolConstants.PacketTypeStopStream, PacketParser.parseHeader(PacketReader.readPacket(written)).packetType)
     }
