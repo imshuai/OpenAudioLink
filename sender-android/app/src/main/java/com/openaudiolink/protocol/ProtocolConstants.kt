@@ -15,9 +15,12 @@ object ProtocolConstants {
     const val PacketTypePing = 0x07
     const val PacketTypePong = 0x08
     const val PacketTypeError = 0x09
+    const val PacketTypeConfig = 0x0A
+    const val PacketTypeStatus = 0x0B
     const val ResultSuccess = 0
     const val ResultUnsupportedProtocol = 1
     const val ResultReceiverBusy = 2
+    const val ResultAuthenticationRequired = 3
     const val ResultInternalError = 4
     const val StreamResultSuccess = 0
     const val StreamResultUnsupportedCodec = 1
@@ -33,9 +36,18 @@ object ProtocolConstants {
     const val ErrorSeverityRecoverable = 2
     const val ErrorSeverityFatal = 3
     const val CodecAacLc = 1
+    const val CodecOpus = 2
+    const val CodecPcm = 3
+    const val CodecFlac = 4
     const val PlatformAndroid = 1
     const val PlatformWindows = 2
+    const val PlatformLinux = 3
+    const val PlatformMacOs = 4
     const val CapabilityAacSupported = 1L
+    const val CapabilityOpusSupported = 2L
+    const val CapabilityConfigurationExchange = 4L
+    const val CapabilityDeviceRename = 8L
+    const val CapabilityLatencyReporting = 16L
     const val DefaultPort = 37373
     val Magic = byteArrayOf('O'.code.toByte(), 'A'.code.toByte(), 'L'.code.toByte(), 'P'.code.toByte())
 }
