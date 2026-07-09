@@ -25,6 +25,10 @@ namespace OpenAudioLink.Receiver
 
         public ReceiverSessionState State { get; private set; }
 
+        public int AudioFramesReceived { get; private set; }
+
+        public byte[] LastAudioPayload { get; private set; }
+
         public byte[] Process(byte[] packet)
         {
             PacketHeader header = PacketParser.ParseHeader(packet);
@@ -113,6 +117,9 @@ namespace OpenAudioLink.Receiver
 
             if (header.PacketType == ProtocolConstants.PacketTypeAudio)
             {
+                AudioPayloadValidator.ValidateAacPayload(payload);
+                AudioFramesReceived++;
+                LastAudioPayload = (byte[])payload.Clone();
                 return null;
             }
 

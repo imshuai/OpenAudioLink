@@ -96,14 +96,42 @@ namespace OpenAudioLink.Tests.Receiver
         }
 
         [TestMethod]
-        public void ProcessAudioWhileStreaming_ReturnsNullAndStaysStreaming()
+        public void ProcessAudioWhileStreaming_RecordsFrameAndReturnsNull()
         {
             ReceiverSession session = StreamingSession();
+            byte[] payload = ValidAudioPayload();
 
-            byte[] response = session.Process(PacketWriter.WritePacket(ProtocolConstants.PacketTypeAudio, 5u, 123456004UL, new byte[] { 0x01 }));
+            byte[] response = session.Process(PacketWriter.WritePacket(ProtocolConstants.PacketTypeAudio, 5u, 123456789UL, payload));
 
             Assert.IsNull(response);
             Assert.AreEqual(ReceiverSessionState.Streaming, session.State);
+            Assert.AreEqual(1, session.AudioFramesReceived);
+            CollectionAssert.AreEqual(payload, session.LastAudioPayload);
+        }
+
+        [TestMethod]
+        public void ProcessAudioBeforeStartStream_Throws()
+        {
+            ReceiverSession session = ReadySession();
+
+            Assert.ThrowsException<PacketParseException>(() => session.Process(PacketWriter.WritePacket(
+                ProtocolConstants.PacketTypeAudio,
+                5u,
+                123456789UL,
+                ValidAudioPayload())));
+        }
+
+        [TestMethod]
+        public void ProcessInvalidAudioWhileStreaming_Throws()
+        {
+            ReceiverSession session = StreamingSession();
+
+            Assert.ThrowsException<PacketParseException>(() => session.Process(PacketWriter.WritePacket(
+                ProtocolConstants.PacketTypeAudio,
+                5u,
+                123456789UL,
+                new byte[] { ProtocolConstants.CodecAacLc })));
+            Assert.AreEqual(0, session.AudioFramesReceived);
         }
 
         [TestMethod]
@@ -139,6 +167,11 @@ namespace OpenAudioLink.Tests.Receiver
                 123456000UL,
                 HandshakePayloads.Hello("Android Phone", "1.0.0", ProtocolConstants.PlatformAndroid, ProtocolConstants.CapabilityAacSupported)));
             return session;
+        }
+
+        private static byte[] ValidAudioPayload()
+        {
+            return HandshakePayloads.Audio(ProtocolConstants.CodecAacLc, 1u, 123456789UL, 20, new byte[] { 0x11, 0x22, 0x33, 0x44 });
         }
 
         private static ReceiverSession StreamingSession()
