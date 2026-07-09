@@ -96,6 +96,17 @@ namespace OpenAudioLink.Tests.Receiver
         }
 
         [TestMethod]
+        public void ProcessAudioWhileStreaming_ReturnsNullAndStaysStreaming()
+        {
+            ReceiverSession session = StreamingSession();
+
+            byte[] response = session.Process(PacketWriter.WritePacket(ProtocolConstants.PacketTypeAudio, 5u, 123456004UL, new byte[] { 0x01 }));
+
+            Assert.IsNull(response);
+            Assert.AreEqual(ReceiverSessionState.Streaming, session.State);
+        }
+
+        [TestMethod]
         public void ProcessPingBeforeStartStream_Throws()
         {
             ReceiverSession session = ReadySession();

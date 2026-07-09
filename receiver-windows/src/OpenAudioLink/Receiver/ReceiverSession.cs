@@ -111,7 +111,12 @@ namespace OpenAudioLink.Receiver
                 return null;
             }
 
-            throw new PacketParseException("Expected PING or STOP_STREAM.");
+            if (header.PacketType == ProtocolConstants.PacketTypeAudio)
+            {
+                return null;
+            }
+
+            throw new PacketParseException("Expected PING, STOP_STREAM, or AUDIO.");
         }
     }
 }
