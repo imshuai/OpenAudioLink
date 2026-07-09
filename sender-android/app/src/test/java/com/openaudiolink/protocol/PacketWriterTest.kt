@@ -15,7 +15,7 @@ class PacketWriterTest {
     @Test fun write_error_matchesFixture() = assertPacket("valid-error.bin", ProtocolConstants.PacketTypeError, 8, 123456007, HandshakePayloads.error(ProtocolConstants.ErrorUnsupportedCodec, ProtocolConstants.ErrorSeverityRecoverable, "Unsupported codec"))
 
     private fun assertPacket(name: String, type: Int, sequence: Long, timestamp: Long, payload: ByteArray) =
-        assertArrayEquals(readFixture(name), PacketWriter.write(type, sequence, timestamp, payload))
+        assertArrayEquals(readFixture(name), PacketWriter.writePacket(type, sequence, timestamp, payload))
 
     private fun readFixture(name: String): ByteArray {
         var directory: File? = File(System.getProperty("user.dir")).absoluteFile

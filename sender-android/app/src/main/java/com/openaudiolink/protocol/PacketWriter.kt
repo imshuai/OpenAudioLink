@@ -1,8 +1,9 @@
 package com.openaudiolink.protocol
 
 object PacketWriter {
-    fun write(packetType: Int, sequenceNumber: Long, timestamp: Long, payload: ByteArray = byteArrayOf()): ByteArray =
-        ByteArray(ProtocolConstants.HeaderSize + payload.size).also { packet ->
+    fun writePacket(packetType: Int, sequenceNumber: Long, timestamp: Long, payload: ByteArray = ByteArray(0)): ByteArray {
+        require(payload.size <= ProtocolConstants.MaxPacketSize) { "Payload exceeds max packet size." }
+        return ByteArray(ProtocolConstants.HeaderSize + payload.size).also { packet ->
             ProtocolConstants.Magic.copyInto(packet)
             packet[4] = ProtocolConstants.MajorVersion.toByte()
             packet[5] = ProtocolConstants.MinorVersion.toByte()
@@ -13,6 +14,7 @@ object PacketWriter {
             writeUInt32(packet, 20, payload.size.toLong())
             payload.copyInto(packet, ProtocolConstants.HeaderSize)
         }
+    }
 
     internal fun writeUInt16(buffer: ByteArray, offset: Int, value: Int) {
         buffer[offset] = (value ushr 8).toByte()

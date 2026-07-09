@@ -3,10 +3,8 @@ package com.openaudiolink.protocol
 import java.io.ByteArrayOutputStream
 
 object HandshakePayloads {
-    fun hello(deviceName: String, appVersion: String): ByteArray = bytes {
-        string(deviceName); string(appVersion)
-        byte(ProtocolConstants.MajorVersion); byte(ProtocolConstants.MinorVersion); byte(ProtocolConstants.PlatformAndroid)
-        uint32(ProtocolConstants.CapabilityAacSupported)
+    fun hello(senderName: String, senderVersion: String, platform: Int, capabilities: Long): ByteArray = bytes {
+        string(senderName); string(senderVersion); byte(platform); uint64(capabilities)
     }
 
     fun welcome(result: Int, receiverName: String, appVersion: String, sessionId: Long): ByteArray = bytes {
@@ -34,6 +32,7 @@ object HandshakePayloads {
         fun uint64(value: Long) = out.write(ByteArray(8).also { PacketWriter.writeUInt64(it, 0, value) })
         fun string(value: String) {
             val data = value.toByteArray(Charsets.UTF_8)
+            require(data.size <= 0xffff) { "String exceeds uint16 length." }
             uint16(data.size)
             out.write(data)
         }

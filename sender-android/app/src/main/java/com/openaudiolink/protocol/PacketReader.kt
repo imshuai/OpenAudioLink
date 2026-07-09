@@ -3,16 +3,13 @@ package com.openaudiolink.protocol
 import java.io.EOFException
 import java.io.InputStream
 
-data class Packet(val header: PacketHeader, val payload: ByteArray)
-
 object PacketReader {
-    fun read(input: InputStream): Packet {
+    fun readPacket(input: InputStream): ByteArray {
         val headerBytes = input.readFully(ProtocolConstants.HeaderSize)
         val payloadLength = PacketParser.readUInt32(headerBytes, 20)
-        if (payloadLength > ProtocolConstants.MaxPacketSize) PacketParser.parseHeader(headerBytes)
+        if (payloadLength > ProtocolConstants.MaxPacketSize) throw PacketParseException("Payload length exceeds max packet size.")
         val payload = input.readFully(payloadLength.toInt())
-        val packet = headerBytes + payload
-        return Packet(PacketParser.parseHeader(packet), payload)
+        return (headerBytes + payload).also { PacketParser.parseHeader(it) }
     }
 
     private fun InputStream.readFully(size: Int): ByteArray {
