@@ -51,15 +51,41 @@ namespace OpenAudioLink.Tests.Protocol
         }
 
         [TestMethod]
-        public void ParseHeader_Phase1aFixtures_ReturnExpectedTypes()
+        public void ParseHeader_Phase1aFixtures_ReturnExpectedTypesAndPayloads()
         {
-            Assert.AreEqual(ProtocolConstants.PacketTypeWelcome, PacketParser.ParseHeader(ReadFixture("valid-welcome.bin")).PacketType);
-            Assert.AreEqual(ProtocolConstants.PacketTypeStartStream, PacketParser.ParseHeader(ReadFixture("valid-start-stream.bin")).PacketType);
-            Assert.AreEqual(ProtocolConstants.PacketTypeStreamReady, PacketParser.ParseHeader(ReadFixture("valid-stream-ready.bin")).PacketType);
-            Assert.AreEqual(ProtocolConstants.PacketTypePing, PacketParser.ParseHeader(ReadFixture("valid-ping.bin")).PacketType);
-            Assert.AreEqual(ProtocolConstants.PacketTypePong, PacketParser.ParseHeader(ReadFixture("valid-pong.bin")).PacketType);
-            Assert.AreEqual(ProtocolConstants.PacketTypeStopStream, PacketParser.ParseHeader(ReadFixture("valid-stop-stream.bin")).PacketType);
-            Assert.AreEqual(ProtocolConstants.PacketTypeError, PacketParser.ParseHeader(ReadFixture("valid-error.bin")).PacketType);
+            AssertFixture("valid-hello.bin", ProtocolConstants.PacketTypeHello, "000d416e64726f69642050686f6e650005312e302e3001000100000001");
+            AssertFixture("valid-welcome.bin", ProtocolConstants.PacketTypeWelcome, "00000a57696e646f77732050430005312e302e300102030405060708");
+            AssertFixture("valid-start-stream.bin", ProtocolConstants.PacketTypeStartStream, "010000bb80020002ee000014");
+            AssertFixture("valid-stream-ready.bin", ProtocolConstants.PacketTypeStreamReady, "00010000bb8002");
+            AssertFixture("valid-ping.bin", ProtocolConstants.PacketTypePing, "0000000500000000075bca05");
+            AssertFixture("valid-pong.bin", ProtocolConstants.PacketTypePong, "0000000500000000075bca05");
+            AssertFixture("valid-stop-stream.bin", ProtocolConstants.PacketTypeStopStream, string.Empty);
+            AssertFixture("valid-error.bin", ProtocolConstants.PacketTypeError, "03eb020011556e737570706f7274656420636f646563");
+        }
+
+        [TestMethod]
+        public void Payload_InvalidDeclaredLength_Throws()
+        {
+            Assert.ThrowsException<PacketParseException>(() => PacketParser.Payload(ReadFixture("invalid-length.bin")));
+        }
+
+        private static void AssertFixture(string name, byte packetType, string payloadHex)
+        {
+            byte[] packet = ReadFixture(name);
+
+            Assert.AreEqual(packetType, PacketParser.ParseHeader(packet).PacketType);
+            CollectionAssert.AreEqual(FromHex(payloadHex), PacketParser.Payload(packet));
+        }
+
+        private static byte[] FromHex(string hex)
+        {
+            byte[] bytes = new byte[hex.Length / 2];
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                bytes[i] = Convert.ToByte(hex.Substring(i * 2, 2), 16);
+            }
+
+            return bytes;
         }
 
         private static byte[] ReadFixture(string name)

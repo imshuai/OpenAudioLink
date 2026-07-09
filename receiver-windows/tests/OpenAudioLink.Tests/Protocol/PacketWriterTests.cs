@@ -9,6 +9,18 @@ namespace OpenAudioLink.Tests.Protocol
     public sealed class PacketWriterTests
     {
         [TestMethod]
+        public void WriteHello_MatchesGoldenPacket()
+        {
+            byte[] packet = PacketWriter.WritePacket(
+                ProtocolConstants.PacketTypeHello,
+                1u,
+                123456000UL,
+                HandshakePayloads.Hello("Android Phone", "1.0.0", ProtocolConstants.PlatformAndroid, ProtocolConstants.CapabilityAacSupported));
+
+            CollectionAssert.AreEqual(ReadFixture("valid-hello.bin"), packet);
+        }
+
+        [TestMethod]
         public void WriteWelcome_MatchesGoldenPacket()
         {
             byte[] packet = PacketWriter.WritePacket(

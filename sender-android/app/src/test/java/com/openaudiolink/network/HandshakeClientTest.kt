@@ -38,4 +38,39 @@ class HandshakeClientTest {
 
         assertFalse(HandshakeClient().run(input, output))
     }
+
+    @Test
+    fun runReturnsFalseOnTimeout() {
+        assertFalse(HandshakeClient().run(ByteArrayInputStream(byteArrayOf()), ByteArrayOutputStream()))
+    }
+
+    @Test
+    fun runReturnsFalseOnProtocolRejection() {
+        val input = ByteArrayInputStream(
+            PacketWriter.writePacket(ProtocolConstants.PacketTypeWelcome, 1, 1, HandshakePayloads.welcome(ProtocolConstants.ResultUnsupportedProtocol, "receiver", "1.0", 7))
+        )
+
+        assertFalse(HandshakeClient().run(input, ByteArrayOutputStream()))
+    }
+
+    @Test
+    fun runReturnsFalseOnStreamReadyFailure() {
+        val input = ByteArrayInputStream(
+            PacketWriter.writePacket(ProtocolConstants.PacketTypeWelcome, 1, 1, HandshakePayloads.welcome(ProtocolConstants.ResultSuccess, "receiver", "1.0", 7)) +
+                PacketWriter.writePacket(ProtocolConstants.PacketTypeStreamReady, 2, 2, HandshakePayloads.streamReady(ProtocolConstants.StreamResultUnsupportedCodec, ProtocolConstants.CodecAacLc, 48000, 2))
+        )
+
+        assertFalse(HandshakeClient().run(input, ByteArrayOutputStream()))
+    }
+
+    @Test
+    fun runReturnsFalseOnPongPayloadMismatch() {
+        val input = ByteArrayInputStream(
+            PacketWriter.writePacket(ProtocolConstants.PacketTypeWelcome, 1, 1, HandshakePayloads.welcome(ProtocolConstants.ResultSuccess, "receiver", "1.0", 7)) +
+                PacketWriter.writePacket(ProtocolConstants.PacketTypeStreamReady, 2, 2, HandshakePayloads.streamReady(ProtocolConstants.StreamResultSuccess, ProtocolConstants.CodecAacLc, 48000, 2)) +
+                PacketWriter.writePacket(ProtocolConstants.PacketTypePong, 3, 3, HandshakePayloads.ping(6, 123456005))
+        )
+
+        assertFalse(HandshakeClient().run(input, ByteArrayOutputStream()))
+    }
 }

@@ -25,11 +25,16 @@ namespace OpenAudioLink.Receiver
 
         public int Port { get; }
 
-        public static TcpReceiver StartLoopback()
+        public static TcpReceiver Start(IPAddress address, int port)
         {
-            TcpListener listener = new TcpListener(IPAddress.Loopback, 0);
+            TcpListener listener = new TcpListener(address, port);
             listener.Start();
             return new TcpReceiver(listener);
+        }
+
+        public static TcpReceiver StartLoopback()
+        {
+            return Start(IPAddress.Loopback, 0);
         }
 
         public void Dispose()

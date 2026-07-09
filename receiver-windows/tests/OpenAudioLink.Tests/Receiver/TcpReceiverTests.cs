@@ -50,6 +50,22 @@ namespace OpenAudioLink.Tests.Receiver
             }
         }
 
+        [TestMethod]
+        public void MalformedPacketClosesConnection()
+        {
+            using (TcpReceiver receiver = TcpReceiver.Start(IPAddress.Loopback, 0))
+            using (TcpClient client = Connect(receiver))
+            {
+                NetworkStream stream = client.GetStream();
+                byte[] malformed = PacketWriter.WritePacket(ProtocolConstants.PacketTypeHello, 1u, 0, new byte[0]);
+                malformed[0] = 0;
+
+                stream.Write(malformed, 0, malformed.Length);
+
+                Assert.AreEqual(0, stream.Read(new byte[1], 0, 1));
+            }
+        }
+
         private static TcpClient Connect(TcpReceiver receiver)
         {
             TcpClient client = new TcpClient();

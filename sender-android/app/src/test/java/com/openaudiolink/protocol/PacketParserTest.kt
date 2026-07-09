@@ -52,23 +52,34 @@ class PacketParserTest {
     }
 
     @Test
-    fun parseHeader_phase1aPacketTypes_matchFixtures() {
-        val cases = mapOf(
-            "valid-hello.bin" to ProtocolConstants.PacketTypeHello,
-            "valid-welcome.bin" to ProtocolConstants.PacketTypeWelcome,
-            "valid-start-stream.bin" to ProtocolConstants.PacketTypeStartStream,
-            "valid-stream-ready.bin" to ProtocolConstants.PacketTypeStreamReady,
-            "valid-audio-aac.bin" to ProtocolConstants.PacketTypeAudio,
-            "valid-stop-stream.bin" to ProtocolConstants.PacketTypeStopStream,
-            "valid-ping.bin" to ProtocolConstants.PacketTypePing,
-            "valid-pong.bin" to ProtocolConstants.PacketTypePong,
-            "valid-error.bin" to ProtocolConstants.PacketTypeError,
+    fun parseHeader_phase1aPacketTypesAndPayloads_matchFixtures() {
+        val cases = listOf(
+            Triple("valid-hello.bin", ProtocolConstants.PacketTypeHello, "000d416e64726f69642050686f6e650005312e302e3001000100000001"),
+            Triple("valid-welcome.bin", ProtocolConstants.PacketTypeWelcome, "00000a57696e646f77732050430005312e302e300102030405060708"),
+            Triple("valid-start-stream.bin", ProtocolConstants.PacketTypeStartStream, "010000bb80020002ee000014"),
+            Triple("valid-stream-ready.bin", ProtocolConstants.PacketTypeStreamReady, "00010000bb8002"),
+            Triple("valid-audio-aac.bin", ProtocolConstants.PacketTypeAudio, "010000000100000000075bcd1500140000000411223344"),
+            Triple("valid-stop-stream.bin", ProtocolConstants.PacketTypeStopStream, ""),
+            Triple("valid-ping.bin", ProtocolConstants.PacketTypePing, "0000000500000000075bca05"),
+            Triple("valid-pong.bin", ProtocolConstants.PacketTypePong, "0000000500000000075bca05"),
+            Triple("valid-error.bin", ProtocolConstants.PacketTypeError, "03eb020011556e737570706f7274656420636f646563"),
         )
 
-        cases.forEach { (fixture, packetType) ->
-            assertEquals(packetType, PacketParser.parseHeader(readFixture(fixture)).packetType)
+        cases.forEach { (fixture, packetType, payloadHex) ->
+            val packet = readFixture(fixture)
+            assertEquals(packetType, PacketParser.parseHeader(packet).packetType)
+            assertArrayEquals(hex(payloadHex), PacketParser.payload(packet))
         }
     }
+
+    @Test
+    fun payload_invalidDeclaredLength_throws() {
+        assertThrows(PacketParseException::class.java) {
+            PacketParser.payload(readFixture("invalid-length.bin"))
+        }
+    }
+
+    private fun hex(value: String): ByteArray = value.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
 
     private fun readFixture(name: String): ByteArray {
         var directory: File? = File(System.getProperty("user.dir")).absoluteFile
