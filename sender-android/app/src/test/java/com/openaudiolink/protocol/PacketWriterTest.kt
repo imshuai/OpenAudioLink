@@ -13,6 +13,7 @@ class PacketWriterTest {
     @Test fun write_ping_matchesFixture() = assertPacket("valid-ping.bin", ProtocolConstants.PacketTypePing, 5, 123456004, HandshakePayloads.ping(5, 123456005))
     @Test fun write_pong_matchesFixture() = assertPacket("valid-pong.bin", ProtocolConstants.PacketTypePong, 6, 123456004, HandshakePayloads.ping(5, 123456005))
     @Test fun write_stopStream_matchesFixture() = assertPacket("valid-stop-stream.bin", ProtocolConstants.PacketTypeStopStream, 7, 123456006, byteArrayOf())
+    @Test fun write_audio_matchesFixture() = assertPacket("valid-audio-aac.bin", ProtocolConstants.PacketTypeAudio, 2, 123456789, HandshakePayloads.audio(ProtocolConstants.CodecAacLc, 1, 123456789, 20, byteArrayOf(0x11, 0x22, 0x33, 0x44)))
     @Test fun write_error_matchesFixture() = assertPacket("valid-error.bin", ProtocolConstants.PacketTypeError, 8, 123456007, HandshakePayloads.error(ProtocolConstants.ErrorUnsupportedCodec, ProtocolConstants.ErrorSeverityRecoverable, "Unsupported codec"))
 
     private fun assertPacket(name: String, type: Int, sequence: Long, timestamp: Long, payload: ByteArray) =

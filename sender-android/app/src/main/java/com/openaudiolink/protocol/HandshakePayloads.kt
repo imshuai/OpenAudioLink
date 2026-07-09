@@ -19,6 +19,10 @@ object HandshakePayloads {
         byte(result); byte(codec); uint32(sampleRate); byte(channels)
     }
 
+    fun audio(codec: Int, frameNumber: Long, captureTimestamp: Long, frameDurationMs: Int, encodedData: ByteArray): ByteArray = bytes {
+        byte(codec); uint32(frameNumber); uint64(captureTimestamp); uint16(frameDurationMs); uint32(encodedData.size.toLong()); data(encodedData)
+    }
+
     fun ping(sequenceNumber: Long, timestamp: Long): ByteArray = bytes { uint32(sequenceNumber); uint64(timestamp) }
     fun error(code: Int, severity: Int, message: String): ByteArray = bytes { uint16(code); byte(severity); string(message) }
 
@@ -30,6 +34,7 @@ object HandshakePayloads {
         fun uint16(value: Int) = out.write(byteArrayOf((value ushr 8).toByte(), value.toByte()))
         fun uint32(value: Long) = out.write(ByteArray(4).also { PacketWriter.writeUInt32(it, 0, value) })
         fun uint64(value: Long) = out.write(ByteArray(8).also { PacketWriter.writeUInt64(it, 0, value) })
+        fun data(value: ByteArray) = out.write(value)
         fun string(value: String) {
             val data = value.toByteArray(Charsets.UTF_8)
             require(data.size <= 0xffff) { "String exceeds uint16 length." }

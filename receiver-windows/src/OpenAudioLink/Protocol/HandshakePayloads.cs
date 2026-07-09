@@ -29,6 +29,12 @@ namespace OpenAudioLink.Protocol
             return Join(new[] { result, codec }, WriteUInt32(sampleRate), new[] { channels });
         }
 
+        public static byte[] Audio(byte codec, uint frameNumber, ulong captureTimestamp, ushort frameDuration, byte[] encodedData)
+        {
+            encodedData = encodedData ?? new byte[0];
+            return Join(new[] { codec }, WriteUInt32(frameNumber), WriteUInt64(captureTimestamp), WriteUInt16(frameDuration), WriteUInt32((uint)encodedData.Length), encodedData);
+        }
+
         public static byte[] Ping(uint sequence, ulong timestamp)
         {
             return Join(WriteUInt32(sequence), WriteUInt64(timestamp));

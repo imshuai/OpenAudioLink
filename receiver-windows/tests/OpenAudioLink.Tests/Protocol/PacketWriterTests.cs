@@ -78,6 +78,18 @@ namespace OpenAudioLink.Tests.Protocol
         }
 
         [TestMethod]
+        public void WriteAudio_MatchesGoldenPacket()
+        {
+            byte[] packet = PacketWriter.WritePacket(
+                ProtocolConstants.PacketTypeAudio,
+                2u,
+                123456789UL,
+                HandshakePayloads.Audio(ProtocolConstants.CodecAacLc, 1u, 123456789UL, 20, new byte[] { 0x11, 0x22, 0x33, 0x44 }));
+
+            CollectionAssert.AreEqual(ReadFixture("valid-audio-aac.bin"), packet);
+        }
+
+        [TestMethod]
         public void WriteError_MatchesGoldenPacket()
         {
             byte[] packet = PacketWriter.WritePacket(
