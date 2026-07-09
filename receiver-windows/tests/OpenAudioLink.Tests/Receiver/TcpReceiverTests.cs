@@ -9,6 +9,8 @@ namespace OpenAudioLink.Tests.Receiver
     [TestClass]
     public sealed class TcpReceiverTests
     {
+        private const int SocketTimeoutMilliseconds = 5000;
+
         [TestMethod]
         public void ClientCompletesPhase1aHandshake()
         {
@@ -51,6 +53,8 @@ namespace OpenAudioLink.Tests.Receiver
         private static TcpClient Connect(TcpReceiver receiver)
         {
             TcpClient client = new TcpClient();
+            client.ReceiveTimeout = SocketTimeoutMilliseconds;
+            client.SendTimeout = SocketTimeoutMilliseconds;
             client.Connect(IPAddress.Loopback, receiver.Port);
             return client;
         }

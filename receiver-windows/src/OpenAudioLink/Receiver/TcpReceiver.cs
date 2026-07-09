@@ -10,9 +10,11 @@ namespace OpenAudioLink.Receiver
     public sealed class TcpReceiver : IDisposable
     {
         private readonly TcpListener listener;
+        private const int SocketTimeoutMilliseconds = 5000;
         private int active;
         private int disposed;
         private long nextSessionId;
+        private TcpClient currentClient;
 
         private TcpReceiver(TcpListener listener)
         {
@@ -35,6 +37,7 @@ namespace OpenAudioLink.Receiver
             if (Interlocked.Exchange(ref disposed, 1) == 0)
             {
                 listener.Stop();
+                Interlocked.Exchange(ref currentClient, null)?.Close();
             }
         }
 
@@ -45,6 +48,8 @@ namespace OpenAudioLink.Receiver
                 try
                 {
                     TcpClient client = listener.AcceptTcpClient();
+                    client.ReceiveTimeout = SocketTimeoutMilliseconds;
+                    client.SendTimeout = SocketTimeoutMilliseconds;
                     ThreadPool.QueueUserWorkItem(_ => Handle(client));
                 }
                 catch (SocketException) when (Volatile.Read(ref disposed) != 0)
@@ -68,7 +73,8 @@ namespace OpenAudioLink.Receiver
                     try
                     {
                         PacketReader.ReadPacket(stream);
-                        Write(stream, ReceiverSession.BusyWelcome());
+                        byte[] busy = ReceiverSession.BusyWelcome();
+                        stream.Write(busy, 0, busy.Length);
                     }
                     catch (IOException) { }
                     catch (PacketParseException) { }
@@ -77,28 +83,26 @@ namespace OpenAudioLink.Receiver
 
                 try
                 {
+                    Interlocked.Exchange(ref currentClient, client);
                     ReceiverSession session = new ReceiverSession((ulong)Interlocked.Increment(ref nextSessionId));
                     while (session.State != ReceiverSessionState.Stopped)
                     {
                         byte[] response = session.Process(PacketReader.ReadPacket(stream));
                         if (response != null)
                         {
-                            Write(stream, response);
+                            stream.Write(response, 0, response.Length);
                         }
                     }
                 }
                 catch (IOException) { }
+                catch (ObjectDisposedException) { }
                 catch (PacketParseException) { }
                 finally
                 {
+                    Interlocked.CompareExchange(ref currentClient, null, client);
                     Interlocked.Exchange(ref active, 0);
                 }
             }
-        }
-
-        private static void Write(Stream stream, byte[] packet)
-        {
-            stream.Write(packet, 0, packet.Length);
         }
     }
 }
