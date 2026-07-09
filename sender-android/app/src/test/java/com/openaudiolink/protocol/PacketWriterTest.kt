@@ -6,6 +6,7 @@ import java.io.File
 import java.io.FileNotFoundException
 
 class PacketWriterTest {
+    @Test fun write_hello_matchesFixture() = assertPacket("valid-hello.bin", ProtocolConstants.PacketTypeHello, 1, 123456000, HandshakePayloads.hello("Android Phone", "1.0.0", ProtocolConstants.PlatformAndroid, ProtocolConstants.CapabilityAacSupported))
     @Test fun write_welcome_matchesFixture() = assertPacket("valid-welcome.bin", ProtocolConstants.PacketTypeWelcome, 2, 123456001, HandshakePayloads.welcome(ProtocolConstants.ResultSuccess, "Windows PC", "1.0.0", 0x0102030405060708))
     @Test fun write_startStream_matchesFixture() = assertPacket("valid-start-stream.bin", ProtocolConstants.PacketTypeStartStream, 3, 123456002, HandshakePayloads.startStream(ProtocolConstants.CodecAacLc, 48000, 2, 192000, 20))
     @Test fun write_streamReady_matchesFixture() = assertPacket("valid-stream-ready.bin", ProtocolConstants.PacketTypeStreamReady, 4, 123456003, HandshakePayloads.streamReady(ProtocolConstants.StreamResultSuccess, ProtocolConstants.CodecAacLc, 48000, 2))

@@ -4,7 +4,7 @@ import java.io.ByteArrayOutputStream
 
 object HandshakePayloads {
     fun hello(senderName: String, senderVersion: String, platform: Int, capabilities: Long): ByteArray = bytes {
-        string(senderName); string(senderVersion); byte(platform); uint64(capabilities)
+        string(senderName); string(senderVersion); byte(ProtocolConstants.MajorVersion); byte(ProtocolConstants.MinorVersion); byte(platform); uint32(capabilities)
     }
 
     fun welcome(result: Int, receiverName: String, appVersion: String, sessionId: Long): ByteArray = bytes {
