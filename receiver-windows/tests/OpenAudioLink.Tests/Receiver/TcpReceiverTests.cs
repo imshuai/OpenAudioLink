@@ -25,11 +25,18 @@ namespace OpenAudioLink.Tests.Receiver
                 Write(stream, ProtocolConstants.PacketTypeStartStream, 2u, HandshakePayloads.StartStream(ProtocolConstants.CodecAacLc, 48000u, 2, 192000u, 20));
                 AssertPacket(stream, ProtocolConstants.PacketTypeStreamReady, HandshakePayloads.StreamReady(ProtocolConstants.StreamResultSuccess, ProtocolConstants.CodecAacLc, 48000u, 2));
 
-                byte[] ping = HandshakePayloads.Ping(3u, 123UL);
-                Write(stream, ProtocolConstants.PacketTypePing, 3u, ping);
+                Write(stream, ProtocolConstants.PacketTypeAudio, 3u, HandshakePayloads.Audio(
+                    ProtocolConstants.CodecAacLc,
+                    1u,
+                    123456789UL,
+                    20,
+                    new byte[] { 0x11, 0x22, 0x33, 0x44 }));
+
+                byte[] ping = HandshakePayloads.Ping(4u, 123UL);
+                Write(stream, ProtocolConstants.PacketTypePing, 4u, ping);
                 AssertPacket(stream, ProtocolConstants.PacketTypePong, ping);
 
-                Write(stream, ProtocolConstants.PacketTypeStopStream, 4u, new byte[0]);
+                Write(stream, ProtocolConstants.PacketTypeStopStream, 5u, new byte[0]);
             }
         }
 
