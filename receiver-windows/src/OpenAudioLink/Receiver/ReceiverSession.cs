@@ -1,3 +1,4 @@
+using System;
 using OpenAudioLink.Protocol;
 
 namespace OpenAudioLink.Receiver
@@ -15,11 +16,18 @@ namespace OpenAudioLink.Receiver
         private const string ReceiverName = "Windows PC";
         private const string ReceiverVersion = "1.0.0";
         private readonly ulong sessionId;
+        private readonly Action<byte[]> audioSink;
         private uint nextSequence = 1;
 
         public ReceiverSession(ulong sessionId)
+            : this(sessionId, null)
+        {
+        }
+
+        public ReceiverSession(ulong sessionId, Action<byte[]> audioSink)
         {
             this.sessionId = sessionId;
+            this.audioSink = audioSink ?? (_ => { });
             State = ReceiverSessionState.WaitingForHello;
         }
 
@@ -118,8 +126,10 @@ namespace OpenAudioLink.Receiver
             if (header.PacketType == ProtocolConstants.PacketTypeAudio)
             {
                 AudioPayloadValidator.ValidateAacPayload(payload);
+                byte[] acceptedPayload = (byte[])payload.Clone();
+                audioSink((byte[])acceptedPayload.Clone());
+                LastAudioPayload = acceptedPayload;
                 AudioFramesReceived++;
-                LastAudioPayload = (byte[])payload.Clone();
                 return null;
             }
 

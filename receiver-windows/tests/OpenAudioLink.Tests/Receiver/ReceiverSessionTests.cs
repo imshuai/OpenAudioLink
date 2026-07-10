@@ -1,3 +1,4 @@
+using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using OpenAudioLink.Protocol;
 using OpenAudioLink.Receiver;
@@ -96,9 +97,15 @@ namespace OpenAudioLink.Tests.Receiver
         }
 
         [TestMethod]
-        public void ProcessAudioWhileStreaming_RecordsFrameAndReturnsNull()
+        public void ProcessAudioWhileStreaming_RecordsFrameCallsSinkAndReturnsNull()
         {
-            ReceiverSession session = StreamingSession();
+            int calls = 0;
+            byte[] received = null;
+            ReceiverSession session = StreamingSession(payload =>
+            {
+                calls++;
+                received = payload;
+            });
             byte[] payload = ValidAudioPayload();
 
             byte[] response = session.Process(PacketWriter.WritePacket(ProtocolConstants.PacketTypeAudio, 5u, 123456789UL, payload));
@@ -106,25 +113,41 @@ namespace OpenAudioLink.Tests.Receiver
             Assert.IsNull(response);
             Assert.AreEqual(ReceiverSessionState.Streaming, session.State);
             Assert.AreEqual(1, session.AudioFramesReceived);
+            Assert.AreEqual(1, calls);
+            CollectionAssert.AreEqual(payload, received);
             CollectionAssert.AreEqual(payload, session.LastAudioPayload);
         }
 
         [TestMethod]
-        public void ProcessAudioBeforeStartStream_Throws()
+        public void ProcessAudioWhileStreaming_SinkMutationDoesNotChangeLastAudioPayload()
         {
-            ReceiverSession session = ReadySession();
+            ReceiverSession session = StreamingSession(payload => payload[0] = ProtocolConstants.CodecOpus);
+            byte[] payload = ValidAudioPayload();
+
+            session.Process(PacketWriter.WritePacket(ProtocolConstants.PacketTypeAudio, 5u, 123456789UL, payload));
+
+            CollectionAssert.AreEqual(payload, session.LastAudioPayload);
+        }
+
+        [TestMethod]
+        public void ProcessAudioBeforeStartStream_ThrowsAndDoesNotCallSink()
+        {
+            int calls = 0;
+            ReceiverSession session = ReadySession(_ => calls++);
 
             Assert.ThrowsException<PacketParseException>(() => session.Process(PacketWriter.WritePacket(
                 ProtocolConstants.PacketTypeAudio,
                 5u,
                 123456789UL,
                 ValidAudioPayload())));
+            Assert.AreEqual(0, calls);
         }
 
         [TestMethod]
-        public void ProcessInvalidAudioWhileStreaming_Throws()
+        public void ProcessInvalidAudioWhileStreaming_ThrowsAndDoesNotCallSink()
         {
-            ReceiverSession session = StreamingSession();
+            int calls = 0;
+            ReceiverSession session = StreamingSession(_ => calls++);
 
             Assert.ThrowsException<PacketParseException>(() => session.Process(PacketWriter.WritePacket(
                 ProtocolConstants.PacketTypeAudio,
@@ -132,6 +155,8 @@ namespace OpenAudioLink.Tests.Receiver
                 123456789UL,
                 new byte[] { ProtocolConstants.CodecAacLc })));
             Assert.AreEqual(0, session.AudioFramesReceived);
+            Assert.AreEqual(0, calls);
+            Assert.IsNull(session.LastAudioPayload);
         }
 
         [TestMethod]
@@ -160,7 +185,12 @@ namespace OpenAudioLink.Tests.Receiver
 
         private static ReceiverSession ReadySession()
         {
-            ReceiverSession session = new ReceiverSession(SessionId);
+            return ReadySession(null);
+        }
+
+        private static ReceiverSession ReadySession(Action<byte[]> audioSink)
+        {
+            ReceiverSession session = new ReceiverSession(SessionId, audioSink);
             session.Process(PacketWriter.WritePacket(
                 ProtocolConstants.PacketTypeHello,
                 1u,
@@ -176,7 +206,12 @@ namespace OpenAudioLink.Tests.Receiver
 
         private static ReceiverSession StreamingSession()
         {
-            ReceiverSession session = ReadySession();
+            return StreamingSession(null);
+        }
+
+        private static ReceiverSession StreamingSession(Action<byte[]> audioSink)
+        {
+            ReceiverSession session = ReadySession(audioSink);
             session.Process(PacketWriter.WritePacket(
                 ProtocolConstants.PacketTypeStartStream,
                 3u,
