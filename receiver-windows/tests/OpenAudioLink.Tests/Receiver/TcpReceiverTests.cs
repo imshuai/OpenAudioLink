@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Threading;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using OpenAudioLink.Protocol;
 using OpenAudioLink.Receiver;
@@ -12,9 +13,17 @@ namespace OpenAudioLink.Tests.Receiver
         private const int SocketTimeoutMilliseconds = 5000;
 
         [TestMethod]
-        public void ClientCompletesPhase1aHandshake()
+        public void ClientCompletesPhase1aHandshakeAndDeliversAudioToSink()
         {
-            using (TcpReceiver receiver = TcpReceiver.StartLoopback())
+            int audioCalls = 0;
+            byte[] receivedAudio = null;
+            using (ManualResetEventSlim audioReceived = new ManualResetEventSlim(false))
+            using (TcpReceiver receiver = TcpReceiver.StartLoopback(payload =>
+            {
+                receivedAudio = payload;
+                Interlocked.Increment(ref audioCalls);
+                audioReceived.Set();
+            }))
             using (TcpClient client = Connect(receiver))
             {
                 NetworkStream stream = client.GetStream();
@@ -25,12 +34,16 @@ namespace OpenAudioLink.Tests.Receiver
                 Write(stream, ProtocolConstants.PacketTypeStartStream, 2u, HandshakePayloads.StartStream(ProtocolConstants.CodecAacLc, 48000u, 2, 192000u, 20));
                 AssertPacket(stream, ProtocolConstants.PacketTypeStreamReady, HandshakePayloads.StreamReady(ProtocolConstants.StreamResultSuccess, ProtocolConstants.CodecAacLc, 48000u, 2));
 
-                Write(stream, ProtocolConstants.PacketTypeAudio, 3u, HandshakePayloads.Audio(
+                byte[] audioPayload = HandshakePayloads.Audio(
                     ProtocolConstants.CodecAacLc,
                     1u,
                     123456789UL,
                     20,
-                    new byte[] { 0x11, 0x22, 0x33, 0x44 }));
+                    new byte[] { 0x11, 0x22, 0x33, 0x44 });
+                Write(stream, ProtocolConstants.PacketTypeAudio, 3u, audioPayload);
+                Assert.IsTrue(audioReceived.Wait(SocketTimeoutMilliseconds), "Timed out waiting for audio sink callback.");
+                Assert.AreEqual(1, audioCalls);
+                CollectionAssert.AreEqual(audioPayload, receivedAudio);
 
                 byte[] ping = HandshakePayloads.Ping(4u, 123UL);
                 Write(stream, ProtocolConstants.PacketTypePing, 4u, ping);

@@ -10,31 +10,33 @@ namespace OpenAudioLink.Receiver
     public sealed class TcpReceiver : IDisposable
     {
         private readonly TcpListener listener;
+        private readonly Action<byte[]> audioSink;
         private const int SocketTimeoutMilliseconds = 5000;
         private int active;
         private int disposed;
         private long nextSessionId;
         private TcpClient currentClient;
 
-        private TcpReceiver(TcpListener listener)
+        private TcpReceiver(TcpListener listener, Action<byte[]> audioSink)
         {
             this.listener = listener;
+            this.audioSink = audioSink ?? (_ => { });
             Port = ((IPEndPoint)listener.LocalEndpoint).Port;
             ThreadPool.QueueUserWorkItem(_ => AcceptLoop());
         }
 
         public int Port { get; }
 
-        public static TcpReceiver Start(IPAddress address, int port)
+        public static TcpReceiver Start(IPAddress address, int port, Action<byte[]> audioSink = null)
         {
             TcpListener listener = new TcpListener(address, port);
             listener.Start();
-            return new TcpReceiver(listener);
+            return new TcpReceiver(listener, audioSink);
         }
 
-        public static TcpReceiver StartLoopback()
+        public static TcpReceiver StartLoopback(Action<byte[]> audioSink = null)
         {
-            return Start(IPAddress.Loopback, 0);
+            return Start(IPAddress.Loopback, 0, audioSink);
         }
 
         public void Dispose()
@@ -89,7 +91,7 @@ namespace OpenAudioLink.Receiver
                 try
                 {
                     Interlocked.Exchange(ref currentClient, client);
-                    ReceiverSession session = new ReceiverSession((ulong)Interlocked.Increment(ref nextSessionId));
+                    ReceiverSession session = new ReceiverSession((ulong)Interlocked.Increment(ref nextSessionId), audioSink);
                     while (session.State != ReceiverSessionState.Stopped)
                     {
                         byte[] response = session.Process(PacketReader.ReadPacket(stream));
