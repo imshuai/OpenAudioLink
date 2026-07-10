@@ -3,7 +3,7 @@ name: android
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, 'phase-*']
 
 jobs:
   test:
