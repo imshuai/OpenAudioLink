@@ -16,23 +16,30 @@ class HandshakeClientTest {
         val input = ByteArrayInputStream(
             PacketWriter.writePacket(ProtocolConstants.PacketTypeWelcome, 1, 1, HandshakePayloads.welcome(ProtocolConstants.ResultSuccess, "receiver", "1.0", 7)) +
                 PacketWriter.writePacket(ProtocolConstants.PacketTypeStreamReady, 2, 2, HandshakePayloads.streamReady(ProtocolConstants.StreamResultSuccess, ProtocolConstants.CodecAacLc, 48000, 2)) +
-                PacketWriter.writePacket(ProtocolConstants.PacketTypePong, 3, 3, HandshakePayloads.ping(5, 123456005))
+                PacketWriter.writePacket(ProtocolConstants.PacketTypePong, 6, 6, HandshakePayloads.ping(5, 123456005))
         )
         val output = ByteArrayOutputStream()
 
         assertTrue(HandshakeClient().run(input, output))
 
         val written = ByteArrayInputStream(output.toByteArray())
-        assertEquals(ProtocolConstants.PacketTypeHello, PacketParser.parseHeader(PacketReader.readPacket(written)).packetType)
-        assertEquals(ProtocolConstants.PacketTypeStartStream, PacketParser.parseHeader(PacketReader.readPacket(written)).packetType)
-        val audio = PacketReader.readPacket(written)
-        assertEquals(ProtocolConstants.PacketTypeAudio, PacketParser.parseHeader(audio).packetType)
+        assertPacket(written, ProtocolConstants.PacketTypeHello, 1)
+        assertPacket(written, ProtocolConstants.PacketTypeStartStream, 2)
         assertArrayEquals(
-            HandshakePayloads.audio(ProtocolConstants.CodecAacLc, 1, 123456789, 20, byteArrayOf(0x11, 0x22, 0x33, 0x44)),
-            PacketParser.payload(audio)
+            HandshakePayloads.audio(ProtocolConstants.CodecAacLc, 1, 123456003, 20, byteArrayOf(0x11, 0x22, 0x33, 0x44)),
+            assertPacket(written, ProtocolConstants.PacketTypeAudio, 3)
         )
-        assertEquals(ProtocolConstants.PacketTypePing, PacketParser.parseHeader(PacketReader.readPacket(written)).packetType)
-        assertEquals(ProtocolConstants.PacketTypeStopStream, PacketParser.parseHeader(PacketReader.readPacket(written)).packetType)
+        assertArrayEquals(
+            HandshakePayloads.audio(ProtocolConstants.CodecAacLc, 2, 123456023, 20, byteArrayOf(0x21, 0x22, 0x23, 0x24)),
+            assertPacket(written, ProtocolConstants.PacketTypeAudio, 4)
+        )
+        assertArrayEquals(
+            HandshakePayloads.audio(ProtocolConstants.CodecAacLc, 3, 123456043, 20, byteArrayOf(0x31, 0x32, 0x33, 0x34)),
+            assertPacket(written, ProtocolConstants.PacketTypeAudio, 5)
+        )
+        assertArrayEquals(HandshakePayloads.ping(5, 123456005), assertPacket(written, ProtocolConstants.PacketTypePing, 6))
+        assertPacket(written, ProtocolConstants.PacketTypeStopStream, 7)
+        assertEquals(0, written.available())
     }
 
     @Test
@@ -78,5 +85,13 @@ class HandshakeClientTest {
         )
 
         assertFalse(HandshakeClient().run(input, ByteArrayOutputStream()))
+    }
+
+    private fun assertPacket(input: ByteArrayInputStream, packetType: Int, sequenceNumber: Long): ByteArray {
+        val packet = PacketReader.readPacket(input)
+        val header = PacketParser.parseHeader(packet)
+        assertEquals(packetType, header.packetType)
+        assertEquals(sequenceNumber, header.sequenceNumber)
+        return PacketParser.payload(packet)
     }
 }
