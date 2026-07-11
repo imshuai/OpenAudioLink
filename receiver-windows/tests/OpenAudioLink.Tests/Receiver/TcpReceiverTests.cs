@@ -13,14 +13,14 @@ namespace OpenAudioLink.Tests.Receiver
         private const int SocketTimeoutMilliseconds = 5000;
 
         [TestMethod]
-        public void ClientCompletesPhase1aHandshakeAndDeliversAudioToSink()
+        public void ClientCompletesPhase1aHandshakeAndDeliversAudioToQueue()
         {
             int audioCalls = 0;
-            byte[] receivedAudio = null;
+            AudioFrameQueue queue = new AudioFrameQueue(2);
             using (ManualResetEventSlim audioReceived = new ManualResetEventSlim(false))
             using (TcpReceiver receiver = TcpReceiver.StartLoopback(payload =>
             {
-                receivedAudio = payload;
+                queue.Enqueue(payload);
                 Interlocked.Increment(ref audioCalls);
                 audioReceived.Set();
             }))
@@ -43,6 +43,8 @@ namespace OpenAudioLink.Tests.Receiver
                 Write(stream, ProtocolConstants.PacketTypeAudio, 3u, audioPayload);
                 Assert.IsTrue(audioReceived.Wait(SocketTimeoutMilliseconds), "Timed out waiting for audio sink callback.");
                 Assert.AreEqual(1, audioCalls);
+                Assert.AreEqual(1, queue.Count);
+                Assert.IsTrue(queue.TryDequeue(out byte[] receivedAudio));
                 CollectionAssert.AreEqual(audioPayload, receivedAudio);
 
                 byte[] ping = HandshakePayloads.Ping(4u, 123UL);
