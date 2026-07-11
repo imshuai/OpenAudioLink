@@ -130,6 +130,21 @@ namespace OpenAudioLink.Tests.Receiver
         }
 
         [TestMethod]
+        public void ProcessAudioWhileStreaming_EnqueuesAcceptedPayload()
+        {
+            AudioFrameQueue queue = new AudioFrameQueue(2);
+            ReceiverSession session = StreamingSession(queue.Enqueue);
+            byte[] payload = ValidAudioPayload();
+
+            byte[] response = session.Process(PacketWriter.WritePacket(ProtocolConstants.PacketTypeAudio, 5u, 123456789UL, payload));
+
+            Assert.IsNull(response);
+            Assert.AreEqual(1, queue.Count);
+            Assert.IsTrue(queue.TryDequeue(out byte[] queued));
+            CollectionAssert.AreEqual(payload, queued);
+        }
+
+        [TestMethod]
         public void ProcessAudioBeforeStartStream_ThrowsAndDoesNotCallSink()
         {
             int calls = 0;
