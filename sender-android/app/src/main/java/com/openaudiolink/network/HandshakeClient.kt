@@ -12,7 +12,17 @@ import java.io.OutputStream
 
 class HandshakeClient {
     private val pingPayload = HandshakePayloads.ping(5, 123456005)
-    private val fakeAudioPayload = HandshakePayloads.audio(ProtocolConstants.CodecAacLc, 1, 123456789, 20, byteArrayOf(0x11, 0x22, 0x33, 0x44))
+    private val fakeAudioFrames = listOf(
+        FakeAudioFrame(1, 123456003, byteArrayOf(0x11, 0x22, 0x33, 0x44)),
+        FakeAudioFrame(2, 123456023, byteArrayOf(0x21, 0x22, 0x23, 0x24)),
+        FakeAudioFrame(3, 123456043, byteArrayOf(0x31, 0x32, 0x33, 0x34)),
+    )
+
+    private data class FakeAudioFrame(
+        val frameNumber: Long,
+        val captureTimestamp: Long,
+        val encoded: ByteArray,
+    )
 
     fun run(input: InputStream, output: OutputStream): Boolean {
         try {
@@ -24,15 +34,22 @@ class HandshakeClient {
             output.flush()
             if (!readResult(input, ProtocolConstants.PacketTypeStreamReady, ProtocolConstants.StreamResultSuccess)) return false
 
-            output.write(PacketWriter.writePacket(ProtocolConstants.PacketTypeAudio, 3, 123456789, fakeAudioPayload))
-            output.flush()
+            for (frame in fakeAudioFrames) {
+                output.write(PacketWriter.writePacket(
+                    ProtocolConstants.PacketTypeAudio,
+                    frame.frameNumber + 2,
+                    frame.captureTimestamp,
+                    HandshakePayloads.audio(ProtocolConstants.CodecAacLc, frame.frameNumber, frame.captureTimestamp, 20, frame.encoded)
+                ))
+                output.flush()
+            }
 
-            output.write(PacketWriter.writePacket(ProtocolConstants.PacketTypePing, 4, 123456004, pingPayload))
+            output.write(PacketWriter.writePacket(ProtocolConstants.PacketTypePing, 6, 123456006, pingPayload))
             output.flush()
             val pong = PacketReader.readPacket(input)
             if (PacketParser.parseHeader(pong).packetType != ProtocolConstants.PacketTypePong || !PacketParser.payload(pong).contentEquals(pingPayload)) return false
 
-            output.write(PacketWriter.writePacket(ProtocolConstants.PacketTypeStopStream, 5, 123456006))
+            output.write(PacketWriter.writePacket(ProtocolConstants.PacketTypeStopStream, 7, 123456007))
             output.flush()
             return true
         } catch (_: IOException) {
