@@ -16,13 +16,13 @@ namespace OpenAudioLink.Tests.Receiver
         public void ClientCompletesPhase1aHandshakeAndDeliversAudioToQueue()
         {
             int audioCalls = 0;
-            AudioFrameQueue queue = new AudioFrameQueue(2);
-            using (ManualResetEventSlim audioReceived = new ManualResetEventSlim(false))
+            AudioFrameQueue queue = new AudioFrameQueue(3);
+            using (CountdownEvent audioReceived = new CountdownEvent(3))
             using (TcpReceiver receiver = TcpReceiver.StartLoopback(payload =>
             {
                 queue.Enqueue(payload);
                 Interlocked.Increment(ref audioCalls);
-                audioReceived.Set();
+                audioReceived.Signal();
             }))
             using (TcpClient client = Connect(receiver))
             {
@@ -34,24 +34,33 @@ namespace OpenAudioLink.Tests.Receiver
                 Write(stream, ProtocolConstants.PacketTypeStartStream, 2u, HandshakePayloads.StartStream(ProtocolConstants.CodecAacLc, 48000u, 2, 192000u, 20));
                 AssertPacket(stream, ProtocolConstants.PacketTypeStreamReady, HandshakePayloads.StreamReady(ProtocolConstants.StreamResultSuccess, ProtocolConstants.CodecAacLc, 48000u, 2));
 
-                byte[] audioPayload = HandshakePayloads.Audio(
-                    ProtocolConstants.CodecAacLc,
-                    1u,
-                    123456789UL,
-                    20,
-                    new byte[] { 0x11, 0x22, 0x33, 0x44 });
-                Write(stream, ProtocolConstants.PacketTypeAudio, 3u, audioPayload);
-                Assert.IsTrue(audioReceived.Wait(SocketTimeoutMilliseconds), "Timed out waiting for audio sink callback.");
-                Assert.AreEqual(1, audioCalls);
-                Assert.AreEqual(1, queue.Count);
-                Assert.IsTrue(queue.TryDequeue(out byte[] receivedAudio));
-                CollectionAssert.AreEqual(audioPayload, receivedAudio);
+                byte[][] audioPayloads =
+                {
+                    HandshakePayloads.Audio(ProtocolConstants.CodecAacLc, 1u, 123456003UL, 20, new byte[] { 0x11, 0x22, 0x33, 0x44 }),
+                    HandshakePayloads.Audio(ProtocolConstants.CodecAacLc, 2u, 123456023UL, 20, new byte[] { 0x21, 0x22, 0x23, 0x24 }),
+                    HandshakePayloads.Audio(ProtocolConstants.CodecAacLc, 3u, 123456043UL, 20, new byte[] { 0x31, 0x32, 0x33, 0x34 }),
+                };
 
-                byte[] ping = HandshakePayloads.Ping(4u, 123UL);
-                Write(stream, ProtocolConstants.PacketTypePing, 4u, ping);
+                for (int i = 0; i < audioPayloads.Length; i++)
+                {
+                    Write(stream, ProtocolConstants.PacketTypeAudio, 3u + (uint)i, audioPayloads[i]);
+                }
+
+                Assert.IsTrue(audioReceived.Wait(SocketTimeoutMilliseconds), "Timed out waiting for audio sink callback.");
+                Assert.AreEqual(3, audioCalls);
+                Assert.AreEqual(3, queue.Count);
+
+                for (int i = 0; i < audioPayloads.Length; i++)
+                {
+                    Assert.IsTrue(queue.TryDequeue(out byte[] receivedAudio));
+                    CollectionAssert.AreEqual(audioPayloads[i], receivedAudio);
+                }
+
+                byte[] ping = HandshakePayloads.Ping(5u, 123456005UL);
+                Write(stream, ProtocolConstants.PacketTypePing, 6u, ping);
                 AssertPacket(stream, ProtocolConstants.PacketTypePong, ping);
 
-                Write(stream, ProtocolConstants.PacketTypeStopStream, 5u, new byte[0]);
+                Write(stream, ProtocolConstants.PacketTypeStopStream, 7u, new byte[0]);
             }
         }
 
