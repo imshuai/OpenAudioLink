@@ -1,12 +1,18 @@
 using System.Drawing;
 using System.Windows.Forms;
+using OpenAudioLink.Receiver;
 
 namespace OpenAudioLink
 {
     public sealed class MainForm : Form
     {
+        private readonly ReceiverRuntime runtime;
+
         public MainForm()
         {
+            runtime = ReceiverRuntime.StartLoopback();
+            ListeningPort = runtime.Port;
+
             Text = "OpenAudioLink Receiver";
             Size = new Size(480, 240);
 
@@ -14,8 +20,20 @@ namespace OpenAudioLink
             {
                 AutoSize = true,
                 Location = new Point(24, 24),
-                Text = "OpenAudioLink Receiver Skeleton"
+                Text = "Listening on TCP port " + ListeningPort
             });
+        }
+
+        public int ListeningPort { get; }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                runtime.Dispose();
+            }
+
+            base.Dispose(disposing);
         }
     }
 }
