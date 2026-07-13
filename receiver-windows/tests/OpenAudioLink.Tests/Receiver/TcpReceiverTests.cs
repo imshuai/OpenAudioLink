@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -50,10 +51,15 @@ namespace OpenAudioLink.Tests.Receiver
                 Assert.AreEqual(3, audioCalls);
                 Assert.AreEqual(3, queue.Count);
 
+                FakeAudioRenderer renderer = new FakeAudioRenderer();
+                Assert.AreEqual(3, renderer.Drain(queue));
+                Assert.AreEqual(0, queue.Count);
+                Assert.AreEqual(3, renderer.RenderedCount);
+
+                IReadOnlyList<byte[]> renderedFrames = renderer.RenderedFrames;
                 for (int i = 0; i < audioPayloads.Length; i++)
                 {
-                    Assert.IsTrue(queue.TryDequeue(out byte[] receivedAudio));
-                    CollectionAssert.AreEqual(audioPayloads[i], receivedAudio);
+                    CollectionAssert.AreEqual(audioPayloads[i], renderedFrames[i]);
                 }
 
                 byte[] ping = HandshakePayloads.Ping(5u, 123456005UL);
