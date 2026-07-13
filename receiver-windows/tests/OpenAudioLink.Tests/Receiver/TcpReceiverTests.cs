@@ -35,11 +35,17 @@ namespace OpenAudioLink.Tests.Receiver
                 Write(stream, ProtocolConstants.PacketTypeStartStream, 2u, HandshakePayloads.StartStream(ProtocolConstants.CodecAacLc, 48000u, 2, 192000u, 20));
                 AssertPacket(stream, ProtocolConstants.PacketTypeStreamReady, HandshakePayloads.StreamReady(ProtocolConstants.StreamResultSuccess, ProtocolConstants.CodecAacLc, 48000u, 2));
 
+                byte[][] encodedFrames =
+                {
+                    new byte[] { 0x11, 0x22, 0x33, 0x44 },
+                    new byte[] { 0x21, 0x22, 0x23, 0x24 },
+                    new byte[] { 0x31, 0x32, 0x33, 0x34 },
+                };
                 byte[][] audioPayloads =
                 {
-                    HandshakePayloads.Audio(ProtocolConstants.CodecAacLc, 1u, 123456003UL, 20, new byte[] { 0x11, 0x22, 0x33, 0x44 }),
-                    HandshakePayloads.Audio(ProtocolConstants.CodecAacLc, 2u, 123456023UL, 20, new byte[] { 0x21, 0x22, 0x23, 0x24 }),
-                    HandshakePayloads.Audio(ProtocolConstants.CodecAacLc, 3u, 123456043UL, 20, new byte[] { 0x31, 0x32, 0x33, 0x34 }),
+                    HandshakePayloads.Audio(ProtocolConstants.CodecAacLc, 1u, 123456003UL, 20, encodedFrames[0]),
+                    HandshakePayloads.Audio(ProtocolConstants.CodecAacLc, 2u, 123456023UL, 20, encodedFrames[1]),
+                    HandshakePayloads.Audio(ProtocolConstants.CodecAacLc, 3u, 123456043UL, 20, encodedFrames[2]),
                 };
 
                 for (int i = 0; i < audioPayloads.Length; i++)
@@ -52,14 +58,17 @@ namespace OpenAudioLink.Tests.Receiver
                 Assert.AreEqual(3, queue.Count);
 
                 FakeAudioRenderer renderer = new FakeAudioRenderer();
-                Assert.AreEqual(3, renderer.Drain(queue));
+                Assert.AreEqual(3, renderer.Drain(queue, new FakeAacDecoder()));
                 Assert.AreEqual(0, queue.Count);
                 Assert.AreEqual(3, renderer.RenderedCount);
 
-                IReadOnlyList<byte[]> renderedFrames = renderer.RenderedFrames;
+                IReadOnlyList<FakePcmFrame> renderedFrames = renderer.RenderedFrames;
                 for (int i = 0; i < audioPayloads.Length; i++)
                 {
-                    CollectionAssert.AreEqual(audioPayloads[i], renderedFrames[i]);
+                    Assert.AreEqual((uint)(i + 1), renderedFrames[i].FrameNumber);
+                    Assert.AreEqual(123456003UL + (ulong)(20 * i), renderedFrames[i].CaptureTimestamp);
+                    Assert.AreEqual((ushort)20, renderedFrames[i].FrameDuration);
+                    CollectionAssert.AreEqual(encodedFrames[i], renderedFrames[i].PcmBytes);
                 }
 
                 byte[] ping = HandshakePayloads.Ping(5u, 123456005UL);
