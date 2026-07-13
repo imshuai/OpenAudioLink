@@ -5,38 +5,44 @@ namespace OpenAudioLink.Receiver
 {
     public sealed class FakeAudioRenderer
     {
-        private readonly List<byte[]> renderedFrames = new List<byte[]>();
+        private readonly List<FakePcmFrame> renderedFrames = new List<FakePcmFrame>();
 
         public int RenderedCount
         {
             get { return renderedFrames.Count; }
         }
 
-        public IReadOnlyList<byte[]> RenderedFrames
+        public IReadOnlyList<FakePcmFrame> RenderedFrames
         {
-            get
-            {
-                byte[][] snapshot = new byte[renderedFrames.Count][];
-                for (int i = 0; i < renderedFrames.Count; i++)
-                {
-                    snapshot[i] = (byte[])renderedFrames[i].Clone();
-                }
-
-                return snapshot;
-            }
+            get { return renderedFrames.ToArray(); }
         }
 
-        public int Drain(AudioFrameQueue queue)
+        public void Render(FakePcmFrame frame)
+        {
+            if (frame == null)
+            {
+                throw new ArgumentNullException(nameof(frame));
+            }
+
+            renderedFrames.Add(new FakePcmFrame(frame.FrameNumber, frame.CaptureTimestamp, frame.FrameDuration, frame.PcmBytes));
+        }
+
+        public int Drain(AudioFrameQueue queue, FakeAacDecoder decoder)
         {
             if (queue == null)
             {
                 throw new ArgumentNullException(nameof(queue));
             }
 
+            if (decoder == null)
+            {
+                throw new ArgumentNullException(nameof(decoder));
+            }
+
             int drained = 0;
             while (queue.TryDequeue(out byte[] payload))
             {
-                renderedFrames.Add((byte[])payload.Clone());
+                Render(decoder.Decode(payload));
                 drained++;
             }
 
