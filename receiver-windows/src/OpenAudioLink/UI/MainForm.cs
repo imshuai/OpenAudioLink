@@ -1,5 +1,7 @@
 using System.Drawing;
+using System.Net;
 using System.Windows.Forms;
+using OpenAudioLink.Protocol;
 using OpenAudioLink.Receiver;
 
 namespace OpenAudioLink
@@ -10,7 +12,7 @@ namespace OpenAudioLink
 
         public MainForm()
         {
-            runtime = ReceiverRuntime.StartLoopback();
+            runtime = ReceiverRuntime.Start(IPAddress.Any, ProtocolConstants.DefaultPort);
             ListeningPort = runtime.Port;
 
             Text = "OpenAudioLink Receiver";
