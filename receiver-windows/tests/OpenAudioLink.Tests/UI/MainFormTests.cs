@@ -23,8 +23,8 @@ namespace OpenAudioLink.Tests.UI
             {
                 using (MainForm form = new MainForm())
                 {
-                    Assert.AreNotEqual(0, form.ListeningPort);
-                    StringAssert.Contains(VisibleText(form), "Listening on TCP port " + form.ListeningPort);
+                    Assert.AreEqual(ProtocolConstants.DefaultPort, form.ListeningPort);
+                    StringAssert.Contains(VisibleText(form), "Listening on TCP port " + ProtocolConstants.DefaultPort);
 
                     using (TcpClient client = Connect(form.ListeningPort))
                     {
