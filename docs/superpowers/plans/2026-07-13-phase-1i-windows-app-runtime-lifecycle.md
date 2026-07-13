@@ -46,7 +46,8 @@ Out of scope:
   - Proves the form-owned runtime accepts a loopback `HELLO -> WELCOME` exchange.
   - Proves disposing the form closes the listener.
 
-No `.csproj` edits are expected because SDK-style projects include `.cs` files by default and the test project already references the WinForms app project.
+- Modify `receiver-windows/tests/OpenAudioLink.Tests/OpenAudioLink.Tests.csproj`
+  - Adds an explicit framework reference to `System.Windows.Forms` for the UI test helper.
 
 ---
 
@@ -54,6 +55,7 @@ No `.csproj` edits are expected because SDK-style projects include `.cs` files b
 
 **Files:**
 - Create: `receiver-windows/tests/OpenAudioLink.Tests/UI/MainFormTests.cs`
+- Modify: `receiver-windows/tests/OpenAudioLink.Tests/OpenAudioLink.Tests.csproj`
 
 - [ ] **Step 1: Create the failing tests**
 
@@ -200,7 +202,17 @@ namespace OpenAudioLink.Tests.UI
 }
 ```
 
-- [ ] **Step 2: Run tests and verify RED**
+- [ ] **Step 2: Add WinForms framework reference for tests**
+
+Add this item group to `receiver-windows/tests/OpenAudioLink.Tests/OpenAudioLink.Tests.csproj`:
+
+```xml
+  <ItemGroup>
+    <Reference Include="System.Windows.Forms" />
+  </ItemGroup>
+```
+
+- [ ] **Step 3: Run tests and verify RED**
 
 Run on a Windows/.NET build host:
 
@@ -218,10 +230,10 @@ if command -v dotnet >/dev/null 2>&1; then dotnet test receiver-windows/OpenAudi
 
 Expected locally if `dotnet` is absent: `dotnet not found; Windows tests require CI`.
 
-- [ ] **Step 3: Commit failing tests**
+- [ ] **Step 4: Commit failing tests**
 
 ```bash
-git add receiver-windows/tests/OpenAudioLink.Tests/UI/MainFormTests.cs
+git add receiver-windows/tests/OpenAudioLink.Tests/UI/MainFormTests.cs receiver-windows/tests/OpenAudioLink.Tests/OpenAudioLink.Tests.csproj
 git commit -m "test: cover main form runtime lifecycle"
 ```
 
