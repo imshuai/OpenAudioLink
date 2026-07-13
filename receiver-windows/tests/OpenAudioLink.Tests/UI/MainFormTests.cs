@@ -7,7 +7,7 @@ using System.Threading;
 using System.Windows.Forms;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using OpenAudioLink.Protocol;
-using OpenAudioLink.UI;
+using OpenAudioLink;
 
 namespace OpenAudioLink.Tests.UI
 {

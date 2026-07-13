@@ -69,7 +69,7 @@ using System.Threading;
 using System.Windows.Forms;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using OpenAudioLink.Protocol;
-using OpenAudioLink.UI;
+using OpenAudioLink;
 
 namespace OpenAudioLink.Tests.UI
 {
@@ -242,7 +242,7 @@ using System.Drawing;
 using System.Windows.Forms;
 using OpenAudioLink.Receiver;
 
-namespace OpenAudioLink.UI
+namespace OpenAudioLink
 {
     public sealed class MainForm : Form
     {
