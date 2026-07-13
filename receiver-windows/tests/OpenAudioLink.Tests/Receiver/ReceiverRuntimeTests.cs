@@ -63,6 +63,10 @@ namespace OpenAudioLink.Tests.Receiver
                     Write(stream, ProtocolConstants.PacketTypeAudio, 3u + (uint)i, payload);
                 }
 
+                byte[] ping = HandshakePayloads.Ping(5u, 123456005UL);
+                Write(stream, ProtocolConstants.PacketTypePing, 6u, ping);
+                AssertPacket(stream, ProtocolConstants.PacketTypePong, ping);
+
                 Assert.AreEqual(3, runtime.Renderer.RenderedCount);
                 Assert.AreEqual(0, runtime.Queue.Count);
                 IReadOnlyList<FakePcmFrame> renderedFrames = runtime.Renderer.RenderedFrames;
@@ -73,10 +77,6 @@ namespace OpenAudioLink.Tests.Receiver
                     Assert.AreEqual((ushort)20, renderedFrames[i].FrameDuration);
                     CollectionAssert.AreEqual(encodedFrames[i], renderedFrames[i].PcmBytes);
                 }
-
-                byte[] ping = HandshakePayloads.Ping(5u, 123456005UL);
-                Write(stream, ProtocolConstants.PacketTypePing, 6u, ping);
-                AssertPacket(stream, ProtocolConstants.PacketTypePong, ping);
 
                 Write(stream, ProtocolConstants.PacketTypeStopStream, 7u, new byte[0]);
             }
