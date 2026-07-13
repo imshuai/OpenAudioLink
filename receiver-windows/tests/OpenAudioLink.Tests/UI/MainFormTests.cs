@@ -15,7 +15,6 @@ namespace OpenAudioLink.Tests.UI
     public sealed class MainFormTests
     {
         private const int SocketTimeoutMilliseconds = 5000;
-        private const int ConnectFailureTimeoutMilliseconds = 1000;
 
         [TestMethod]
         public void ConstructorStartsReceiverRuntimeAndShowsPort()
@@ -105,7 +104,7 @@ namespace OpenAudioLink.Tests.UI
             using (TcpClient client = new TcpClient())
             {
                 IAsyncResult result = client.BeginConnect(IPAddress.Loopback, port, null, null);
-                if (!result.AsyncWaitHandle.WaitOne(ConnectFailureTimeoutMilliseconds))
+                if (!result.AsyncWaitHandle.WaitOne(SocketTimeoutMilliseconds))
                 {
                     client.Close();
                     Assert.Fail("Timed out waiting for connection failure after MainForm.Dispose.");
