@@ -26,13 +26,14 @@ namespace OpenAudioLink.Receiver
             return Start(IPAddress.Loopback, 0, queueCapacity);
         }
 
-        public static ReceiverRuntime Start(IPAddress address, int port, int queueCapacity = 8)
+        public static ReceiverRuntime Start(IPAddress address, int port, int queueCapacity = 8, Action<int> renderedCountChanged = null)
         {
             if (address == null)
             {
                 throw new ArgumentNullException(nameof(address));
             }
 
+            renderedCountChanged = renderedCountChanged ?? (_ => { });
             AudioFrameQueue queue = new AudioFrameQueue(queueCapacity);
             FakeAacDecoder decoder = new FakeAacDecoder();
             FakeAudioRenderer renderer = new FakeAudioRenderer();
@@ -40,6 +41,7 @@ namespace OpenAudioLink.Receiver
             {
                 queue.Enqueue(payload);
                 renderer.Drain(queue, decoder);
+                renderedCountChanged(renderer.RenderedCount);
             });
 
             return new ReceiverRuntime(queue, renderer, receiver);
