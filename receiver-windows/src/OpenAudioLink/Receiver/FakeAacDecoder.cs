@@ -13,7 +13,7 @@ namespace OpenAudioLink.Receiver
             ulong captureTimestamp = ((ulong)PacketParser.ReadUInt32(audioPayload, 5) << 32) | PacketParser.ReadUInt32(audioPayload, 9);
             ushort frameDuration = ReadUInt16(audioPayload, 13);
             uint encodedSize = PacketParser.ReadUInt32(audioPayload, 15);
-            byte[] fakePcmBytes = new byte[encodedSize];
+            byte[] fakePcmBytes = new byte[(int)encodedSize];
             Buffer.BlockCopy(audioPayload, ProtocolConstants.AudioPayloadHeaderSize, fakePcmBytes, 0, fakePcmBytes.Length);
 
             return new FakePcmFrame(frameNumber, captureTimestamp, frameDuration, fakePcmBytes);
