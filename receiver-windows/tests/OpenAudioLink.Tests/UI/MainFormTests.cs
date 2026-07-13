@@ -25,6 +25,7 @@ namespace OpenAudioLink.Tests.UI
                 {
                     Assert.AreEqual(ProtocolConstants.DefaultPort, form.ListeningPort);
                     StringAssert.Contains(VisibleText(form), "Listening on TCP port " + ProtocolConstants.DefaultPort);
+                    StringAssert.Contains(VisibleText(form), "Rendered frames: 0");
 
                     using (TcpClient client = Connect(form.ListeningPort))
                     {
@@ -33,6 +34,44 @@ namespace OpenAudioLink.Tests.UI
                         AssertPacket(stream, ProtocolConstants.PacketTypeWelcome, HandshakePayloads.Welcome(ProtocolConstants.ResultSuccess, "Windows PC", "1.0.0", 1));
                         Write(stream, ProtocolConstants.PacketTypeStopStream, 2u, new byte[0]);
                     }
+                }
+            });
+        }
+
+        [TestMethod]
+        public void FakeStreamUpdatesRenderedFrameStatus()
+        {
+            RunSta(() =>
+            {
+                using (MainForm form = new MainForm())
+                using (TcpClient client = Connect(form.ListeningPort))
+                {
+                    NetworkStream stream = client.GetStream();
+                    Write(stream, ProtocolConstants.PacketTypeHello, 1u, HandshakePayloads.Hello("Android Phone", "1.0.0", ProtocolConstants.PlatformAndroid, ProtocolConstants.CapabilityAacSupported));
+                    AssertPacket(stream, ProtocolConstants.PacketTypeWelcome, HandshakePayloads.Welcome(ProtocolConstants.ResultSuccess, "Windows PC", "1.0.0", 1));
+
+                    Write(stream, ProtocolConstants.PacketTypeStartStream, 2u, HandshakePayloads.StartStream(ProtocolConstants.CodecAacLc, 48000u, 2, 192000u, 20));
+                    AssertPacket(stream, ProtocolConstants.PacketTypeStreamReady, HandshakePayloads.StreamReady(ProtocolConstants.StreamResultSuccess, ProtocolConstants.CodecAacLc, 48000u, 2));
+
+                    byte[][] encodedFrames =
+                    {
+                        new byte[] { 0x11, 0x22, 0x33, 0x44 },
+                        new byte[] { 0x21, 0x22, 0x23, 0x24 },
+                        new byte[] { 0x31, 0x32, 0x33, 0x34 },
+                    };
+
+                    for (int i = 0; i < encodedFrames.Length; i++)
+                    {
+                        byte[] payload = HandshakePayloads.Audio(ProtocolConstants.CodecAacLc, (uint)(i + 1), 123456003UL + (ulong)(20 * i), 20, encodedFrames[i]);
+                        Write(stream, ProtocolConstants.PacketTypeAudio, 3u + (uint)i, payload);
+                    }
+
+                    byte[] ping = HandshakePayloads.Ping(5u, 123456005UL);
+                    Write(stream, ProtocolConstants.PacketTypePing, 6u, ping);
+                    AssertPacket(stream, ProtocolConstants.PacketTypePong, ping);
+
+                    StringAssert.Contains(VisibleText(form), "Rendered frames: 3");
+                    Write(stream, ProtocolConstants.PacketTypeStopStream, 7u, new byte[0]);
                 }
             });
         }
