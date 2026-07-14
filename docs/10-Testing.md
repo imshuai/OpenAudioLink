@@ -293,6 +293,28 @@ End-to-end validation must be performed before public releases.
 
 ---
 
+# Development Fake End-to-End Smoke Test
+
+This is a development fake smoke test to run before real capture, codec and playback are available. It does not replace release end-to-end validation.
+
+Prerequisites:
+
+- The Windows and Android devices are on the same reachable network.
+- TCP port 39888 is reachable.
+- The current Windows and Android builds are installed.
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Start the Windows application. | `Listening on TCP port 39888` and `Rendered frames: 0` are displayed. |
+| 2 | On Android, enter the Windows IP address or host and tap `Connect Fake Stream`. | The status changes from `Connecting` to `Success`. |
+| 3 | Check the Windows application. | `Rendered frames: 3` is displayed. |
+| 4 | Without restarting either application, tap `Connect Fake Stream` again. | The status changes from `Connecting` to `Success`, and the previous session does not cause a busy failure. |
+| 5 | Check the Windows application. | `Rendered frames: 6` is displayed. |
+
+This smoke test proves only fake packet flow, graceful `STOP_STREAM` close and manual reconnect. It does not replace release end-to-end validation for discovery, MediaProjection, real AAC, audible playback or latency.
+
+---
+
 # Platform Test Matrix
 
 Version 1 compatibility matrix.
