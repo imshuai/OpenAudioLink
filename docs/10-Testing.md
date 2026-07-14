@@ -1084,6 +1084,7 @@ testdata/audio/
 ├── README.md
 ├── aac-lc-48k-stereo-1024.adts
 ├── aac-lc-48k-stereo-1024.raw
+├── aac-lc-48k-stereo-6frames.adts
 ├── aac-lc-48k-stereo.asc
 └── fixture-manifest.json
 ```
@@ -1100,8 +1101,16 @@ python3 -m unittest discover -s tools/audio -p 'test_*.py'
 python3 tools/audio/validate_aac_fixture.py
 ```
 
-The fixture proves structure and provenance; native Media Foundation decode is
-proved in the next phase.
+The single-frame files prove wire framing and provenance. The six-frame ADTS
+file is test-only provenance: Windows tests remove each ADTS header and submit
+six raw access units to MediaFoundationAacDecoder. Submit may buffer; Drain is
+required. The native oracle is exactly 24576 bytes of 48 kHz stereo PCM with
+non-zero energy in both channels, not a PCM hash.
+
+GitHub Windows CI runs the same native test in verified x86 and x64 testhost
+processes on windows-2022. This proves standalone decode and COM ABI only;
+`ReceiverRuntime` still uses `FakeAacDecoder`; native-decoder integration and
+audible playback remain unimplemented.
 
 ---
 

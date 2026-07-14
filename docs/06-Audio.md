@@ -565,6 +565,10 @@ decoded through:
 Windows Media Foundation
 ```
 
+Phase 1-O proves only a standalone `MediaFoundationAacDecoder`; the documented
+`IAudioDecoder` interface and factory tree below are future runtime-integration
+architecture, not Phase 1-O code.
+
 ---
 
 # Decoder Responsibilities
@@ -588,31 +592,15 @@ The decoder does not:
 
 # Decoder Interface
 
-Recommended interface.
-
-```csharp
-public interface IAudioDecoder
-{
-    void Initialize(AudioFormat format);
-
-    bool Decode(
-        ReadOnlyMemory<byte> input,
-        out ReadOnlyMemory<byte> pcm
-    );
-
-    void Flush();
-
-    void Dispose();
-}
-```
-
-The interface intentionally hides the underlying decoder implementation.
+The runtime-integration interface will be defined in a later phase. It must
+preserve zero, one, or many output chunks per submit and output-returning
+`Drain` semantics while hiding the underlying decoder implementation.
 
 ---
 
 # Decoder Implementation
 
-Planned Version 1 implementation:
+Planned runtime-integration implementation:
 
 ```text
 IAudioDecoder
@@ -645,23 +633,19 @@ IAudioDecoder
 Internal pipeline.
 
 ```text
-AAC Frame
+Raw AAC Access Unit
 
 ↓
 
-IMFSourceReader
+IMFSample / IMFMediaBuffer
 
 ↓
 
-AAC Decoder MFT
+AAC Decoder IMFTransform
 
 ↓
 
 PCM Media Buffer
-
-↓
-
-PCM Output
 ```
 
 ---
@@ -702,10 +686,6 @@ Input:
 
 ```text
 Audio AAC
-
-MIME:
-
-audio/aac
 ```
 
 ```text
@@ -717,6 +697,9 @@ MF_MT_USER_DATA: 00 00 FE 00 00 00 00 00 00 00 00 00 11 90
 
 The first 12 `MF_MT_USER_DATA` bytes are the little-endian `HEAACWAVEINFO`
 tail; the final two bytes are `AudioSpecificConfig`.
+
+One `Submit` may return zero, one, or many PCM chunks. End-of-stream requires
+`Drain` to return delayed output.
 
 ---
 
@@ -1079,7 +1062,7 @@ Decoder input originates from network data.
 Validation required:
 
 - Maximum frame size
-- Valid AAC headers
+- Bounded complete raw AAC access units
 - Resource limits
 
 Malformed input must not crash the process.

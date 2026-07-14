@@ -1227,7 +1227,6 @@ Version 1 will use Windows Media Foundation.
 Reasons.
 
 - Built into Windows
-- Hardware acceleration when available
 - Excellent compatibility
 - Low CPU usage
 - Mature implementation
@@ -1280,6 +1279,9 @@ Stereo
 192 kbps
 ```
 
+`192 kbps` is canonical fixture/Version 1 stream metadata, not ADTS framing or
+an additional MFT requirement.
+
 Frames arrive directly from the protocol layer.
 
 Each protocol packet supplies exactly one complete raw AAC-LC access unit:
@@ -1296,8 +1298,10 @@ MF_MT_USER_DATA: 00 00 FE 00 00 00 00 00 00 00 00 00 11 90
 The first 12 `MF_MT_USER_DATA` bytes are the little-endian `HEAACWAVEINFO`
 tail; the final two bytes are `AudioSpecificConfig`.
 
-This is a future native decoder requirement; this phase does not implement
-the native decoder.
+Phase 1-O proves this media type and native decode path in a standalone
+MediaFoundationAacDecoder on Windows CI. ReceiverRuntime still uses
+FakeAacDecoder; session ownership, worker-thread integration and playback
+remain later phases.
 
 ---
 
@@ -1315,7 +1319,9 @@ Stereo
 48000 Hz
 ```
 
-Decoded PCM is immediately forwarded to the playback queue.
+The standalone proof returns every currently available PCM chunk and Drain
+returns delayed output. A later runtime-integration phase will forward PCM to
+the playback queue.
 
 ---
 
