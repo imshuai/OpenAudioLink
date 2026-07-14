@@ -451,7 +451,7 @@ namespace OpenAudioLink
         public const byte PlatformAndroid = 1;
         public const byte PlatformWindows = 2;
         public const uint CapabilityAacSupported = 1;
-        public const int DefaultPort = 37373;
+        public const int DefaultPort = 39888;
 
         public static readonly byte[] Magic = { (byte)'O', (byte)'A', (byte)'L', (byte)'P' };
     }
@@ -1371,7 +1371,7 @@ object ProtocolConstants {
     const val PlatformAndroid = 1
     const val PlatformWindows = 2
     const val CapabilityAacSupported = 1L
-    const val DefaultPort = 37373
+    const val DefaultPort = 39888
 
     val Magic = byteArrayOf('O'.code.toByte(), 'A'.code.toByte(), 'L'.code.toByte(), 'P'.code.toByte())
 }

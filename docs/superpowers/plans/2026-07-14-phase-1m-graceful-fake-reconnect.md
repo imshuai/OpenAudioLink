@@ -357,7 +357,7 @@ DEFAULT_PORT_SOURCES = [
     (
         "Windows",
         ROOT / "receiver-windows/src/OpenAudioLink/Protocol/ProtocolConstants.cs",
-        re.compile(r"\bpublic const int DefaultPort = (\d+);\b"),
+        re.compile(r"\bpublic const int DefaultPort = (\d+)\b;"),
     ),
 ]
 ```

@@ -48,6 +48,6 @@ object ProtocolConstants {
     const val CapabilityConfigurationExchange = 4L
     const val CapabilityDeviceRename = 8L
     const val CapabilityLatencyReporting = 16L
-    const val DefaultPort = 37373
+    const val DefaultPort = 39888
     val Magic = byteArrayOf('O'.code.toByte(), 'A'.code.toByte(), 'L'.code.toByte(), 'P'.code.toByte())
 }

@@ -45,7 +45,7 @@ The app entry point is still a skeleton `TextView` that only displays:
 OpenAudioLink Sender
 ```
 
-Windows Phase 1-J already starts the normal receiver app on `IPAddress.Any:37373`, matching Android's default port.
+Windows Phase 1-J already starts the normal receiver app on `IPAddress.Any:39888`, matching Android's default port.
 
 ---
 

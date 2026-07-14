@@ -18,7 +18,7 @@ After this phase, launching the Windows app starts the existing fake receiver ru
 IPAddress.Any : ProtocolConstants.DefaultPort
 ```
 
-This aligns the Windows receiver with the Android sender's existing `TcpHandshakeClient` default port (`37373`) and moves the project one step closer to Android-to-Windows LAN validation.
+This aligns the Windows receiver with the Android sender's existing `TcpHandshakeClient` default port (`39888`) and moves the project one step closer to Android-to-Windows LAN validation.
 
 ---
 
@@ -42,12 +42,12 @@ Phase 1-J must not add:
 
 Phase 1-I wires `MainForm` to start and dispose `ReceiverRuntime`, but it uses `ReceiverRuntime.StartLoopback()`.
 
-That means the app currently binds only loopback on an OS-selected dynamic port. This is good for isolated tests, but Android's production TCP sender defaults to `ProtocolConstants.DefaultPort = 37373`, so the normal app path is not yet LAN-addressable on the protocol port.
+That means the app currently binds only loopback on an OS-selected dynamic port. This is good for isolated tests, but Android's production TCP sender defaults to `ProtocolConstants.DefaultPort = 39888`, so the normal app path is not yet LAN-addressable on the protocol port.
 
 Both platforms already define the same default port:
 
-- Windows: `receiver-windows/src/OpenAudioLink/Protocol/ProtocolConstants.cs` → `DefaultPort = 37373`.
-- Android: `sender-android/app/src/main/java/com/openaudiolink/protocol/ProtocolConstants.kt` → `DefaultPort = 37373`.
+- Windows: `receiver-windows/src/OpenAudioLink/Protocol/ProtocolConstants.cs` → `DefaultPort = 39888`.
+- Android: `sender-android/app/src/main/java/com/openaudiolink/protocol/ProtocolConstants.kt` → `DefaultPort = 39888`.
 
 ---
 
@@ -71,14 +71,14 @@ ListeningPort = runtime.Port;
 Keep the existing status text shape:
 
 ```text
-Listening on TCP port 37373
+Listening on TCP port 39888
 ```
 
 No host/address list is shown in this phase. Showing every LAN address would add UI and network-interface complexity before discovery exists.
 
 ### Error behavior
 
-If port `37373` is already in use, construction of `MainForm` may fail with the existing `SocketException` from `TcpListener.Start()`.
+If port `39888` is already in use, construction of `MainForm` may fail with the existing `SocketException` from `TcpListener.Start()`.
 
 Phase 1-J does not add a fallback dynamic port. A silent fallback would make Android default connection fail while the UI still appears healthy.
 
@@ -89,7 +89,7 @@ Phase 1-J does not add a fallback dynamic port. A silent fallback would make And
 Update WinForms tests to prove:
 
 1. `MainForm.ListeningPort == ProtocolConstants.DefaultPort`.
-2. The label contains `Listening on TCP port 37373`.
+2. The label contains `Listening on TCP port 39888`.
 3. A loopback TCP client can connect to the default port and complete `HELLO -> WELCOME`.
 4. Disposing `MainForm` closes the listener on the default port.
 

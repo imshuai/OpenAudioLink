@@ -53,7 +53,7 @@ namespace OpenAudioLink.Protocol
         public const uint CapabilityConfigurationExchange = 4;
         public const uint CapabilityDeviceRename = 8;
         public const uint CapabilityLatencyReporting = 16;
-        public const int DefaultPort = 37373;
+        public const int DefaultPort = 39888;
 
         public static readonly byte[] Magic = { (byte)'O', (byte)'A', (byte)'L', (byte)'P' };
     }
