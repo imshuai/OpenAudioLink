@@ -50,6 +50,8 @@ def split_adts_frames(data: bytes) -> list[bytes]:
             raise ValueError("truncated ADTS header from FFmpeg")
         if data[offset] != 0xFF or data[offset + 1] & 0xF0 != 0xF0:
             raise ValueError("invalid ADTS sync from FFmpeg")
+        if data[offset + 1] & 1 != 1:
+            raise ValueError("CRC-bearing ADTS frame from FFmpeg")
         length = (
             ((data[offset + 3] & 3) << 11)
             | (data[offset + 4] << 3)
