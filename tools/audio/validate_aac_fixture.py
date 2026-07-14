@@ -54,7 +54,10 @@ def validate_asc(asc: bytes) -> None:
 
 
 def validate_manifest(manifest: dict[str, object], files: dict[str, bytes]) -> None:
-    require(manifest.get("format") == 1, "manifest format must be 1")
+    require(
+        type(manifest.get("format")) is int and manifest.get("format") == 1,
+        "manifest format must be 1",
+    )
     generator = manifest.get("generator")
     require(isinstance(generator, dict), "manifest generator is missing")
     version = generator.get("ffmpegVersion")
@@ -64,11 +67,14 @@ def validate_manifest(manifest: dict[str, object], files: dict[str, bytes]) -> N
     )
     command = generator.get("command")
     require(
-        isinstance(command, list) and bool(command),
+        isinstance(command, list)
+        and bool(command)
+        and all(type(argument) is str and bool(argument) for argument in command),
         "manifest FFmpeg command is empty",
     )
     require(
-        generator.get("selectedFrameIndex") == 2,
+        type(generator.get("selectedFrameIndex")) is int
+        and generator.get("selectedFrameIndex") == 2,
         "manifest selected frame index must be 2",
     )
     records = manifest.get("files")
@@ -76,7 +82,10 @@ def validate_manifest(manifest: dict[str, object], files: dict[str, bytes]) -> N
     for name, data in files.items():
         record = records.get(name)
         require(isinstance(record, dict), f"missing manifest record for {name}")
-        require(record.get("length") == len(data), f"manifest length mismatch for {name}")
+        require(
+            type(record.get("length")) is int and record.get("length") == len(data),
+            f"manifest length mismatch for {name}",
+        )
         require(
             record.get("sha256") == hashlib.sha256(data).hexdigest(),
             f"manifest SHA-256 mismatch for {name}",
@@ -99,7 +108,7 @@ def validate_fixture(directory: Path = AUDIO_DIR) -> None:
 def main() -> int:
     try:
         validate_fixture()
-    except (FixtureValidationError, OSError, json.JSONDecodeError) as error:
+    except (FixtureValidationError, OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
         print(f"aac fixture validation failed: {error}", file=sys.stderr)
         return 1
     print("aac fixture validation ok")

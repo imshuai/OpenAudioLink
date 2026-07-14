@@ -2,13 +2,17 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import io
 import unittest
+from contextlib import redirect_stderr
+from unittest.mock import patch
 
 from validate_aac_fixture import (
     FixtureValidationError,
     validate_adts,
     validate_asc,
     validate_manifest,
+    main,
 )
 
 RAW = b"\x12\x34\x56"
@@ -186,6 +190,44 @@ class FixtureValidationTests(unittest.TestCase):
         for name, message, value in cases:
             with self.subTest(name=name):
                 self.rejected(message, lambda v=value: validate_manifest(v, data))
+
+    def test_manifest_rejects_boolean_and_float_integers(self) -> None:
+        data = files()
+        cases = [
+            ("format bool", lambda value: value.update(format=True), "manifest format"),
+            (
+                "selected index float",
+                lambda value: value["generator"].update(selectedFrameIndex=2.0),
+                "selected frame index",
+            ),
+            (
+                "length float",
+                lambda value: value["files"][RAW_NAME].update(length=float(len(RAW))),
+                "length mismatch",
+            ),
+        ]
+        for name, update, message in cases:
+            with self.subTest(name=name):
+                value = copy.deepcopy(manifest(data))
+                update(value)
+                self.rejected(message, lambda v=value: validate_manifest(v, data))
+
+    def test_manifest_rejects_empty_or_non_string_command_arguments(self) -> None:
+        data = files()
+        for argument in ("", 1):
+            with self.subTest(argument=argument):
+                value = copy.deepcopy(manifest(data))
+                value["generator"]["command"] = ["ffmpeg", argument]
+                self.rejected("FFmpeg command", lambda v=value: validate_manifest(v, data))
+
+    def test_main_reports_unicode_decode_error(self) -> None:
+        error = UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
+        stderr = io.StringIO()
+        with patch("validate_aac_fixture.validate_fixture", side_effect=error):
+            with redirect_stderr(stderr):
+                result = main()
+        self.assertEqual(result, 1)
+        self.assertIn("aac fixture validation failed", stderr.getvalue())
 
 
 if __name__ == "__main__":
