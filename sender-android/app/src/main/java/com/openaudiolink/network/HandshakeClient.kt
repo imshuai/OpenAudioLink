@@ -51,7 +51,7 @@ class HandshakeClient {
 
             output.write(PacketWriter.writePacket(ProtocolConstants.PacketTypeStopStream, 7, 123456007))
             output.flush()
-            return true
+            return input.read() == -1
         } catch (_: IOException) {
             return false
         } catch (_: PacketParseException) {
