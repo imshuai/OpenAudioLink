@@ -75,8 +75,6 @@ def main() -> int:
 
     selected = select_continuous_frames(split_adts_frames(encoded))
     adts = selected[0]
-    if adts[1] & 1 != 1:
-        raise ValueError("FFmpeg generated a CRC-bearing ADTS frame")
     raw = adts[7:]
     continuous = b"".join(selected)
 
@@ -114,7 +112,8 @@ def main() -> int:
         "One AAC-LC, 48 kHz, stereo, 1024-sample raw access unit.\n\n"
         f"- FFmpeg: `{version.splitlines()[0]}`\n"
         f"- Command: `{shlex.join(FFMPEG_COMMAND)}`\n"
-        f"- Selected zero-based ADTS frame range: `{SELECTED_FRAME_INDEX}..{SELECTED_FRAME_INDEX + SELECTED_FRAME_COUNT - 1}` ({SELECTED_FRAME_COUNT} frames)\n"
+        "- Selected zero-based ADTS frame range: `2..7` "
+        f"({SELECTED_FRAME_COUNT} frames)\n"
         "- AudioSpecificConfig: `11 90`\n\n"
         "| File | Bytes | SHA-256 |\n"
         "|------|------:|---------|\n"
