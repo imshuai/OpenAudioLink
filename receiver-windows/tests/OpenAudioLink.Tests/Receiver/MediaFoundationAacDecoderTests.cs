@@ -55,6 +55,20 @@ namespace OpenAudioLink.Tests.Receiver
         }
 
         [TestMethod]
+        public void AdtsSplitterRejectsInvalidSyncCrcTrailingByteAndWrongFrameCount()
+        {
+            Assert.ThrowsException<InvalidDataException>(() => SplitAdts(
+                new byte[] { 0x00, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00 }));
+            Assert.ThrowsException<InvalidDataException>(() => SplitAdts(
+                new byte[] { 0xff, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00 }));
+
+            byte[] trailing = TestFixtures.Read(ContinuousFixture);
+            Array.Resize(ref trailing, trailing.Length + 1);
+            Assert.ThrowsException<InvalidDataException>(() => SplitAdts(trailing));
+            Assert.ThrowsException<InvalidDataException>(() => SplitAdts(new byte[0]));
+        }
+
+        [TestMethod]
         public void SubmitRejectsNullAndEmptyInput()
         {
             RunMta(() =>
@@ -74,10 +88,9 @@ namespace OpenAudioLink.Tests.Receiver
             {
                 using (MediaFoundationAacDecoder decoder = new MediaFoundationAacDecoder())
                 {
-                    Exception error = CaptureOnMta(
-                        () => decoder.Submit(new byte[] { 0x01 }));
-                    Assert.IsNotNull(error);
-                    Assert.AreEqual(typeof(InvalidOperationException), error.GetType());
+                    AssertWrongThread(() => decoder.Submit(new byte[] { 0x01 }));
+                    AssertWrongThread(() => decoder.Drain());
+                    AssertWrongThread(() => decoder.Dispose());
                 }
             });
         }
@@ -194,6 +207,13 @@ namespace OpenAudioLink.Tests.Receiver
                 throw new InvalidDataException("continuous fixture must contain six frames");
             }
             return frames;
+        }
+
+        private static void AssertWrongThread(Action action)
+        {
+            Exception error = CaptureOnMta(action);
+            Assert.IsNotNull(error);
+            Assert.AreEqual(typeof(InvalidOperationException), error.GetType());
         }
 
         private static Exception CaptureOnMta(Action action)
