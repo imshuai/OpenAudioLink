@@ -1222,7 +1222,7 @@ Only one AudioManager instance exists.
 
 # AAC Decoder
 
-Version 1 uses Windows Media Foundation.
+Version 1 will use Windows Media Foundation.
 
 Reasons.
 

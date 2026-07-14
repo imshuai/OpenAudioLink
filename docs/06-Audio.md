@@ -553,7 +553,7 @@ Codec selection belongs to protocol negotiation.
 
 The Decoder subsystem converts compressed audio frames into PCM samples.
 
-Version 1 uses:
+Version 1 will use:
 
 ```
 AAC-LC
@@ -612,7 +612,7 @@ The interface intentionally hides the underlying decoder implementation.
 
 # Decoder Implementation
 
-Version 1:
+Planned Version 1 implementation:
 
 ```text
 IAudioDecoder
