@@ -5,6 +5,19 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+CANONICAL_DEFAULT_PORT = 39888
+DEFAULT_PORT_SOURCES = [
+    (
+        "Android",
+        ROOT / "sender-android/app/src/main/java/com/openaudiolink/protocol/ProtocolConstants.kt",
+        re.compile(r"\bconst val DefaultPort = (\d+)\b"),
+    ),
+    (
+        "Windows",
+        ROOT / "receiver-windows/src/OpenAudioLink/Protocol/ProtocolConstants.cs",
+        re.compile(r"\bpublic const int DefaultPort = (\d+)\b;"),
+    ),
+]
 DOCS = sorted((ROOT / "docs").glob("*.md"))
 FILES = [ROOT / "README.md", *DOCS]
 REQUIRED_DOCS = [
@@ -74,12 +87,28 @@ def check_stale_text() -> list[str]:
     return errors
 
 
+def check_default_ports() -> list[str]:
+    errors: list[str] = []
+    for platform, path, pattern in DEFAULT_PORT_SOURCES:
+        match = pattern.search(read(path))
+        if match is None:
+            errors.append(f"missing {platform} DefaultPort: {path.relative_to(ROOT)}")
+        elif int(match.group(1)) != CANONICAL_DEFAULT_PORT:
+            errors.append(
+                f"default port mismatch in {path.relative_to(ROOT)}: "
+                f"{match.group(1)} != {CANONICAL_DEFAULT_PORT}"
+            )
+
+    return errors
+
+
 def main() -> int:
     errors = []
     errors.extend(check_required_docs())
     errors.extend(check_markdown_fences())
     errors.extend(check_doc_refs())
     errors.extend(check_stale_text())
+    errors.extend(check_default_ports())
     if errors:
         for error in errors:
             print(error)
