@@ -2,11 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
+using System.Reflection;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Windows.Forms;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using OpenAudioLink.Protocol;
+using OpenAudioLink.Receiver;
 using OpenAudioLink.Tests;
 using OpenAudioLink;
 
@@ -73,6 +75,18 @@ namespace OpenAudioLink.Tests.UI
                     AssertPacket(stream, ProtocolConstants.PacketTypePong, ping);
 
                     StringAssert.Contains(VisibleText(form), "Rendered frames: 3");
+                    ReceiverRuntime runtime = (ReceiverRuntime)typeof(MainForm)
+                        .GetField("runtime", BindingFlags.Instance | BindingFlags.NonPublic)
+                        .GetValue(form);
+                    IReadOnlyList<FakePcmFrame> renderedFrames = runtime.Renderer.RenderedFrames;
+                    for (int i = 0; i < renderedFrames.Count; i++)
+                    {
+                        Assert.AreEqual((uint)(i + 1), renderedFrames[i].FrameNumber);
+                        Assert.AreEqual(captureTimestamps[i], renderedFrames[i].CaptureTimestamp);
+                        Assert.AreEqual((ushort)21, renderedFrames[i].FrameDuration);
+                        CollectionAssert.AreEqual(encodedFrame, renderedFrames[i].PcmBytes);
+                    }
+
                     Write(stream, ProtocolConstants.PacketTypeStopStream, 7u, new byte[0]);
                 }
             });
