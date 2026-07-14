@@ -14,4 +14,6 @@ jobs:
         with:
           python-version: '3.12'
       - run: python3 tools/check_docs_consistency.py
+      - run: python3 -m unittest discover -s tools/audio -p 'test_*.py'
+      - run: python3 tools/audio/validate_aac_fixture.py
       - run: python3 tools/protocol/generate_golden_packets.py --check
