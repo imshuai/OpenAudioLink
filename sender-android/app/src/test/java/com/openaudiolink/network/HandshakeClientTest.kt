@@ -7,17 +7,14 @@ import com.openaudiolink.protocol.PacketWriter
 import com.openaudiolink.protocol.ProtocolConstants
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 import org.junit.Assert.*
 import org.junit.Test
 
 class HandshakeClientTest {
     @Test
     fun runWritesHandshakePacketsOnSuccess() {
-        val input = ByteArrayInputStream(
-            PacketWriter.writePacket(ProtocolConstants.PacketTypeWelcome, 1, 1, HandshakePayloads.welcome(ProtocolConstants.ResultSuccess, "receiver", "1.0", 7)) +
-                PacketWriter.writePacket(ProtocolConstants.PacketTypeStreamReady, 2, 2, HandshakePayloads.streamReady(ProtocolConstants.StreamResultSuccess, ProtocolConstants.CodecAacLc, 48000, 2)) +
-                PacketWriter.writePacket(ProtocolConstants.PacketTypePong, 6, 6, HandshakePayloads.ping(5, 123456005))
-        )
+        val input = ByteArrayInputStream(successfulResponses())
         val output = ByteArrayOutputStream()
 
         assertTrue(HandshakeClient().run(input, output))
@@ -40,6 +37,20 @@ class HandshakeClientTest {
         assertArrayEquals(HandshakePayloads.ping(5, 123456005), assertPacket(written, ProtocolConstants.PacketTypePing, 6))
         assertPacket(written, ProtocolConstants.PacketTypeStopStream, 7)
         assertEquals(0, written.available())
+    }
+
+    @Test
+    fun runReturnsFalseWhenReceiverSendsDataAfterStop() {
+        val input = ByteArrayInputStream(successfulResponses() + byteArrayOf(0x01))
+
+        assertFalse(HandshakeClient().run(input, ByteArrayOutputStream()))
+    }
+
+    @Test
+    fun runReturnsFalseWhenReceiverCloseFailsAfterStop() {
+        val input = IOExceptionAtEofInputStream(successfulResponses())
+
+        assertFalse(HandshakeClient().run(input, ByteArrayOutputStream()))
     }
 
     @Test
@@ -85,6 +96,17 @@ class HandshakeClientTest {
         )
 
         assertFalse(HandshakeClient().run(input, ByteArrayOutputStream()))
+    }
+
+    private fun successfulResponses(): ByteArray =
+        PacketWriter.writePacket(ProtocolConstants.PacketTypeWelcome, 1, 1, HandshakePayloads.welcome(ProtocolConstants.ResultSuccess, "receiver", "1.0", 7)) +
+            PacketWriter.writePacket(ProtocolConstants.PacketTypeStreamReady, 2, 2, HandshakePayloads.streamReady(ProtocolConstants.StreamResultSuccess, ProtocolConstants.CodecAacLc, 48000, 2)) +
+            PacketWriter.writePacket(ProtocolConstants.PacketTypePong, 6, 6, HandshakePayloads.ping(5, 123456005))
+
+    private class IOExceptionAtEofInputStream(bytes: ByteArray) : ByteArrayInputStream(bytes) {
+        override fun read(): Int = super.read().also {
+            if (it == -1) throw IOException("Receiver did not close cleanly.")
+        }
     }
 
     private fun assertPacket(input: ByteArrayInputStream, packetType: Int, sequenceNumber: Long): ByteArray {
