@@ -1282,6 +1282,23 @@ Stereo
 
 Frames arrive directly from the protocol layer.
 
+Each protocol packet supplies exactly one complete raw AAC-LC access unit:
+no ADTS header and no codec-config packet. Version 1 derives the fixed
+`AudioSpecificConfig = 11 90` from AAC-LC, 48 kHz, and stereo.
+
+```text
+Subtype: MFAudioFormat_AAC
+MF_MT_AAC_PAYLOAD_TYPE: 0
+MF_MT_AAC_AUDIO_PROFILE_LEVEL_INDICATION: FE
+MF_MT_USER_DATA: 00 00 FE 00 00 00 00 00 00 00 00 00 11 90
+```
+
+The first 12 `MF_MT_USER_DATA` bytes are the little-endian `HEAACWAVEINFO`
+tail; the final two bytes are `AudioSpecificConfig`.
+
+This is a future native decoder requirement; this phase does not implement
+the native decoder.
+
 ---
 
 # Decoder Output

@@ -821,7 +821,7 @@ Bitrate
 ```
 Frame Duration
 
-20 ms
+21 ms
 ```
 
 The receiver validates the requested parameters before accepting the stream.
@@ -1102,6 +1102,14 @@ Values:
 
 Version 1 requires AAC-LC.
 
+For Version 1 AAC-LC, `Encoded Data` contains exactly one complete raw
+`raw_data_block()` access unit. It contains no ADTS, LATM/LOAS, MP4 container
+bytes, concatenated frames, partial frames, or codec-configuration buffer.
+
+The fixed configuration is AAC-LC, 48 kHz, stereo, 1024 samples per channel
+per frame. Its two-byte `AudioSpecificConfig` is `11 90` and is derived from
+Version 1 rather than transmitted in each packet.
+
 ---
 
 # Frame Number
@@ -1156,13 +1164,19 @@ The timestamp is unaffected by changes to the system clock.
 
 # Frame Duration
 
-Indicates the playback duration represented by this frame.
+An AAC-LC frame represents exactly 1024 samples per channel:
 
-Typical values:
+```text
+1024 / 48000 = 21.333333... ms
+```
+
+The integer wire field carries nominal `21 ms`. Implementations use monotonic
+capture timestamps and decoded sample count for exact timing; they do not
+accumulate the nominal integer as the playback clock.
 
 | Codec | Duration |
 |--------|---------:|
-| AAC | 20 ms |
+| AAC | 21 ms (nominal) |
 | Opus | 20 ms |
 | PCM | Variable |
 
@@ -2805,7 +2819,7 @@ Default Buffer
 ```text
 Default Frame
 
-20 ms
+21 ms
 ```
 
 Changing these values should not require protocol redesign.

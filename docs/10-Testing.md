@@ -482,7 +482,10 @@ Required tests:
 - Codec must be AAC-LC for Version 1 streams.
 - Frame Number increments by one per encoded frame.
 - Capture Timestamp uses a monotonic sender clock.
-- Frame Duration is normally 20 ms.
+- AAC-LC represents exactly 1024 samples/channel at 48 kHz
+  (21.333333... ms); the integer wire Frame Duration is nominally 21 ms.
+- Encoded Data contains exactly one raw AAC-LC access unit and no ADTS or
+  codec-configuration bytes.
 - Encoded Size cannot exceed packet payload length.
 - Corrupted encoded data is dropped without killing the session.
 - Queue overflow drops old audio instead of increasing latency.
@@ -1074,28 +1077,31 @@ Before publishing Version 1:
 
 # Test Data
 
-Recommended test data should live under a future `testdata/` directory.
-
-Suggested files:
+Checked-in AAC fixture data lives under `testdata/audio/`:
 
 ```text
-testdata/
-├── protocol/
-│   ├── valid-hello.bin
-│   ├── valid-audio-aac.bin
-│   ├── invalid-magic.bin
-│   └── invalid-length.bin
-├── audio/
-│   ├── sine-1khz-48k-stereo.aac
-│   ├── silence-48k-stereo.aac
-│   └── corrupt-frame.aac
-└── config/
-    ├── valid-config.json
-    ├── invalid-config.json
-    └── old-version-config.json
+testdata/audio/
+├── README.md
+├── aac-lc-48k-stereo-1024.adts
+├── aac-lc-48k-stereo-1024.raw
+├── aac-lc-48k-stereo.asc
+└── fixture-manifest.json
 ```
 
-Binary golden files must be regenerated only when the protocol version intentionally changes.
+Binary golden files are regenerated only for an intentional protocol-version
+change or a reviewed pre-release wire-contract correction. Regeneration
+updates the generator, manifest, platform exact-byte tests, and affected
+protocol documentation in the same change.
+
+Run:
+
+```bash
+python3 -m unittest discover -s tools/audio -p 'test_*.py'
+python3 tools/audio/validate_aac_fixture.py
+```
+
+The fixture proves structure and provenance; native Media Foundation decode is
+proved in the next phase.
 
 ---
 

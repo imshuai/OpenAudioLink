@@ -755,51 +755,15 @@ Busy polling should be avoided.
 
 # PCM Frame Size
 
-Recommended frame duration:
+Version 1 AAC-LC uses 1024 PCM samples per channel per encoder frame.
 
-```
-20 ms
-```
-
-For:
-
-```
-48000 Hz
-
-Stereo
-
-16-bit
+```text
+1024 / 48000 = 21.333333... ms
+1024 samples × 2 channels × 2 bytes = 4096 bytes
 ```
 
-PCM size:
-
-```
-3840 Bytes
-```
-
-Calculation:
-
-```
-48000
-
-×
-
-2 Channels
-
-×
-
-2 Bytes
-
-×
-
-20 ms
-
-=
-
-3840 Bytes
-```
-
-The encoder receives one PCM frame at a time.
+AudioRecord reads may be combined or split so MediaCodec receives a continuous
+PCM stream; capture timestamps remain sample-count based.
 
 ---
 
@@ -1099,7 +1063,8 @@ Recommended defaults.
 | Channels | 2 |
 | Bitrate | 192 kbps |
 | Profile | AAC-LC |
-| Frame Duration | 20 ms |
+| Samples per channel per AAC frame | 1024 |
+| Nominal wire frame duration | 21 ms |
 
 Bitrate should be configurable by the user.
 
@@ -1201,14 +1166,11 @@ Input consists exclusively of PCM frames.
 
 Each frame contains:
 
-```
-20 ms
-
-Stereo
-
-48000 Hz
-
-16-bit PCM
+```text
+1024 samples/channel
+4096 bytes
+exact 21.333333... ms
+Stereo, 48000 Hz, 16-bit PCM
 ```
 
 Input timestamps should originate from the Audio Capture Engine.
@@ -1220,6 +1182,11 @@ Input timestamps should originate from the Audio Capture Engine.
 Output consists of AAC access units.
 
 Each access unit is immediately wrapped into an AUDIO packet.
+
+Each transmitted access unit is one complete raw AAC-LC frame. ADTS headers,
+LATM/LOAS framing, container bytes, and `BUFFER_FLAG_CODEC_CONFIG` output are
+not sent as `AUDIO.EncodedData`. The encoder requires `csd-0 = 11 90` before
+sending audio.
 
 No additional buffering occurs inside the encoder.
 

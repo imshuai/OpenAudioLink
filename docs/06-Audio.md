@@ -364,6 +364,11 @@ Contains:
 Compressed audio frames
 ```
 
+Each frame is exactly one complete raw AAC-LC `raw_data_block()` access unit:
+no ADTS, LATM/LOAS, MP4/container bytes, concatenated or partial frames, or
+codec-configuration buffer. Version 1 fixes AAC-LC at 48 kHz stereo with 1024
+samples per channel per frame and `AudioSpecificConfig = 11 90`.
+
 ---
 
 ## PCM Buffer
@@ -695,17 +700,23 @@ Ready
 
 Input:
 
-```
+```text
 Audio AAC
 
 MIME:
 
 audio/aac
-
-Subtype:
-
-MFAudioFormat_AAC
 ```
+
+```text
+Subtype: MFAudioFormat_AAC
+MF_MT_AAC_PAYLOAD_TYPE: 0
+MF_MT_AAC_AUDIO_PROFILE_LEVEL_INDICATION: FE
+MF_MT_USER_DATA: 00 00 FE 00 00 00 00 00 00 00 00 00 11 90
+```
+
+The first 12 `MF_MT_USER_DATA` bytes are the little-endian `HEAACWAVEINFO`
+tail; the final two bytes are `AudioSpecificConfig`.
 
 ---
 
@@ -1484,18 +1495,19 @@ Packets arrive:
 Playback requires:
 
 ```
-20ms
+21.333333...ms
 
-20ms
+21.333333...ms
 
-20ms
+21.333333...ms
 
-20ms
+21.333333...ms
 
-20ms
+21.333333...ms
 ```
 
-The jitter buffer smooths these differences.
+AAC playback cadence is exactly 21.333333... ms; the integer wire Frame
+Duration remains nominal 21 ms. The jitter buffer smooths these differences.
 
 ---
 
@@ -1556,7 +1568,7 @@ Example:
 Expected:
 
 ```
-20 ms
+21.333333 ms
 ```
 
 Actual:
@@ -1568,7 +1580,7 @@ Actual:
 Jitter:
 
 ```
-15 ms
+13.666667 ms
 ```
 
 ---
@@ -2495,15 +2507,13 @@ Example:
 ```json
 {
   "timestamp": 1234567890,
-  "samples": 960
+  "samplesPerChannel": 1024,
+  "sampleRate": 48000
 }
 ```
 
-Meaning:
-
-```
-20ms audio frame
-```
+This models one exact 21.333333... ms frame. `samplesPerChannel` and
+`sampleRate` describe the timing model; they are not new wire fields.
 
 ---
 
