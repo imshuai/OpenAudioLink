@@ -1191,8 +1191,10 @@ In `FakeAacDecoderTests.cs` and `FakeAudioRendererTests.cs`, change nominal AAC 
 if rg -n "\\b20\\b|123456023|123456043|11223344|21222324|31323334|11, 0x22, 0x33, 0x44|0x21, 0x22, 0x23, 0x24|0x31, 0x32, 0x33, 0x34" \
   sender-android/app/src/main/java/com/openaudiolink/network/HandshakeClient.kt \
   sender-android/app/src/test/java/com/openaudiolink/network/HandshakeClientTest.kt \
-  sender-android/app/src/test/java/com/openaudiolink/protocol \
-  receiver-windows/tests/OpenAudioLink.Tests/Protocol \
+  sender-android/app/src/test/java/com/openaudiolink/protocol/PacketWriterTest.kt \
+  sender-android/app/src/test/java/com/openaudiolink/protocol/PacketParserTest.kt \
+  receiver-windows/tests/OpenAudioLink.Tests/Protocol/PacketWriterTests.cs \
+  receiver-windows/tests/OpenAudioLink.Tests/Protocol/PacketParserTests.cs \
   receiver-windows/tests/OpenAudioLink.Tests/Receiver \
   receiver-windows/tests/OpenAudioLink.Tests/UI; then
   echo 'stale fake AAC fixture metadata remains'
@@ -1200,7 +1202,9 @@ if rg -n "\\b20\\b|123456023|123456043|11223344|21222324|31323334|11, 0x22, 0x33
 fi
 ```
 
-Expected: no output. This search is deliberately limited to protocol/fake-flow code, so unrelated documentation latency targets are not candidates for replacement.
+Expected: no output. This search is deliberately limited to exact-byte
+writer/parser tests and fake-flow code, so unrelated protocol-header offsets
+and documentation latency targets are not candidates for replacement.
 
 - [ ] **Step 4: Run/record Windows tests and commit**
 
