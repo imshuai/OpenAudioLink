@@ -8,9 +8,18 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from validate_aac_fixture import ADTS_NAME, ASC_NAME, AUDIO_DIR, RAW_NAME, validate_fixture
+from validate_aac_fixture import (
+    ADTS_NAME,
+    ASC_NAME,
+    AUDIO_DIR,
+    CONTINUOUS_ADTS_NAME,
+    RAW_NAME,
+    split_adts_frames,
+    validate_fixture,
+)
 
 SELECTED_FRAME_INDEX = 2
+SELECTED_FRAME_COUNT = 6
 ASC = b"\x11\x90"
 FFMPEG_COMMAND = [
     "ffmpeg",
@@ -42,26 +51,11 @@ FFMPEG_COMMAND = [
 ]
 
 
-def split_adts_frames(data: bytes) -> list[bytes]:
-    frames: list[bytes] = []
-    offset = 0
-    while offset < len(data):
-        if len(data) - offset < 7:
-            raise ValueError("truncated ADTS header from FFmpeg")
-        if data[offset] != 0xFF or data[offset + 1] & 0xF0 != 0xF0:
-            raise ValueError("invalid ADTS sync from FFmpeg")
-        if data[offset + 1] & 1 != 1:
-            raise ValueError("CRC-bearing ADTS frame from FFmpeg")
-        length = (
-            ((data[offset + 3] & 3) << 11)
-            | (data[offset + 4] << 3)
-            | ((data[offset + 5] >> 5) & 7)
-        )
-        if length < 7 or offset + length > len(data):
-            raise ValueError("invalid ADTS frame length from FFmpeg")
-        frames.append(data[offset : offset + length])
-        offset += length
-    return frames
+def select_continuous_frames(frames: list[bytes]) -> list[bytes]:
+    end = SELECTED_FRAME_INDEX + SELECTED_FRAME_COUNT
+    if len(frames) < end:
+        raise ValueError("FFmpeg did not produce source frames 2..7")
+    return frames[SELECTED_FRAME_INDEX:end]
 
 
 def record(data: bytes) -> dict[str, object]:
@@ -79,16 +73,20 @@ def main() -> int:
         subprocess.run(FFMPEG_COMMAND, cwd=temporary, check=True)
         encoded = (Path(temporary) / "source.adts").read_bytes()
 
-    frames = split_adts_frames(encoded)
-    if len(frames) <= SELECTED_FRAME_INDEX:
-        raise ValueError("FFmpeg did not produce frame index 2")
-    adts = frames[SELECTED_FRAME_INDEX]
+    selected = select_continuous_frames(split_adts_frames(encoded))
+    adts = selected[0]
     if adts[1] & 1 != 1:
         raise ValueError("FFmpeg generated a CRC-bearing ADTS frame")
     raw = adts[7:]
+    continuous = b"".join(selected)
 
     AUDIO_DIR.mkdir(parents=True, exist_ok=True)
-    files = {ADTS_NAME: adts, RAW_NAME: raw, ASC_NAME: ASC}
+    files = {
+        ADTS_NAME: adts,
+        RAW_NAME: raw,
+        ASC_NAME: ASC,
+        CONTINUOUS_ADTS_NAME: continuous,
+    }
     for name, data in files.items():
         (AUDIO_DIR / name).write_bytes(data)
 
@@ -98,6 +96,7 @@ def main() -> int:
             "ffmpegVersion": version,
             "command": FFMPEG_COMMAND,
             "selectedFrameIndex": SELECTED_FRAME_INDEX,
+            "selectedFrameCount": SELECTED_FRAME_COUNT,
         },
         "files": {name: record(data) for name, data in sorted(files.items())},
     }
@@ -115,7 +114,7 @@ def main() -> int:
         "One AAC-LC, 48 kHz, stereo, 1024-sample raw access unit.\n\n"
         f"- FFmpeg: `{version.splitlines()[0]}`\n"
         f"- Command: `{shlex.join(FFMPEG_COMMAND)}`\n"
-        f"- Selected zero-based ADTS frame: `{SELECTED_FRAME_INDEX}`\n"
+        f"- Selected zero-based ADTS frame range: `{SELECTED_FRAME_INDEX}..{SELECTED_FRAME_INDEX + SELECTED_FRAME_COUNT - 1}` ({SELECTED_FRAME_COUNT} frames)\n"
         "- AudioSpecificConfig: `11 90`\n\n"
         "| File | Bytes | SHA-256 |\n"
         "|------|------:|---------|\n"

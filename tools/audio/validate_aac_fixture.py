@@ -11,8 +11,9 @@ AUDIO_DIR = ROOT / "testdata" / "audio"
 ADTS_NAME = "aac-lc-48k-stereo-1024.adts"
 RAW_NAME = "aac-lc-48k-stereo-1024.raw"
 ASC_NAME = "aac-lc-48k-stereo.asc"
+CONTINUOUS_ADTS_NAME = "aac-lc-48k-stereo-6frames.adts"
 MANIFEST_NAME = "fixture-manifest.json"
-BINARY_NAMES = (ADTS_NAME, RAW_NAME, ASC_NAME)
+BINARY_NAMES = (ADTS_NAME, RAW_NAME, ASC_NAME, CONTINUOUS_ADTS_NAME)
 
 
 class FixtureValidationError(ValueError):
@@ -22,6 +23,28 @@ class FixtureValidationError(ValueError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise FixtureValidationError(message)
+
+
+def split_adts_frames(data: bytes) -> list[bytes]:
+    frames: list[bytes] = []
+    offset = 0
+    while offset < len(data):
+        require(len(data) - offset >= 7, "truncated ADTS header")
+        require(
+            data[offset] == 0xFF and data[offset + 1] & 0xF0 == 0xF0,
+            "invalid ADTS sync",
+        )
+        require(data[offset + 1] & 1 == 1, "CRC-bearing ADTS frame")
+        length = (
+            ((data[offset + 3] & 3) << 11)
+            | (data[offset + 4] << 3)
+            | ((data[offset + 5] >> 5) & 7)
+        )
+        require(length >= 7, "invalid ADTS frame length")
+        require(offset + length <= len(data), "truncated ADTS frame")
+        frames.append(data[offset : offset + length])
+        offset += length
+    return frames
 
 
 def validate_adts(adts: bytes, raw: bytes) -> None:
@@ -40,6 +63,14 @@ def validate_adts(adts: bytes, raw: bytes) -> None:
     payload = adts[7:]
     require(payload, "ADTS payload is empty")
     require(payload == raw, "stored raw payload does not match ADTS payload")
+
+
+def validate_continuous_adts(data: bytes, first_frame: bytes) -> None:
+    frames = split_adts_frames(data)
+    require(len(frames) == 6, "continuous ADTS frame count must be 6")
+    require(frames[0] == first_frame, "first continuous ADTS frame mismatch")
+    for frame in frames:
+        validate_adts(frame, frame[7:])
 
 
 def validate_asc(asc: bytes) -> None:
@@ -77,6 +108,11 @@ def validate_manifest(manifest: dict[str, object], files: dict[str, bytes]) -> N
         and generator.get("selectedFrameIndex") == 2,
         "manifest selected frame index must be 2",
     )
+    require(
+        type(generator.get("selectedFrameCount")) is int
+        and generator.get("selectedFrameCount") == 6,
+        "manifest selected frame count must be 6",
+    )
     records = manifest.get("files")
     require(isinstance(records, dict), "manifest files map is missing")
     for name, data in files.items():
@@ -99,6 +135,7 @@ def validate_manifest(manifest: dict[str, object], files: dict[str, bytes]) -> N
 def validate_fixture(directory: Path = AUDIO_DIR) -> None:
     files = {name: (directory / name).read_bytes() for name in BINARY_NAMES}
     validate_adts(files[ADTS_NAME], files[RAW_NAME])
+    validate_continuous_adts(files[CONTINUOUS_ADTS_NAME], files[ADTS_NAME])
     validate_asc(files[ASC_NAME])
     manifest = json.loads((directory / MANIFEST_NAME).read_text(encoding="utf-8"))
     require(isinstance(manifest, dict), "manifest root must be an object")
