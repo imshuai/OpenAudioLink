@@ -7,11 +7,18 @@ on:
 
 jobs:
   test:
-    runs-on: windows-latest
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [x86, x64]
     steps:
       - uses: actions/checkout@v4
       - uses: microsoft/setup-msbuild@v2
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
-      - run: dotnet test receiver-windows/OpenAudioLink.sln -c Release
+      - name: Test (${{ matrix.architecture }})
+        env:
+          OAL_TEST_ARCHITECTURE: ${{ matrix.architecture }}
+        run: dotnet test receiver-windows/OpenAudioLink.sln -c Release -- RunConfiguration.TargetPlatform=${{ matrix.architecture }}
