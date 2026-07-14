@@ -11,17 +11,16 @@ import java.io.InputStream
 import java.io.OutputStream
 
 class HandshakeClient {
-    private val pingPayload = HandshakePayloads.ping(5, 123456005)
+    private val pingPayload = HandshakePayloads.ping(5, 123498671)
     private val fakeAudioFrames = listOf(
-        FakeAudioFrame(1, 123456003, byteArrayOf(0x11, 0x22, 0x33, 0x44)),
-        FakeAudioFrame(2, 123456023, byteArrayOf(0x21, 0x22, 0x23, 0x24)),
-        FakeAudioFrame(3, 123456043, byteArrayOf(0x31, 0x32, 0x33, 0x34)),
+        FakeAudioFrame(1, 123456003),
+        FakeAudioFrame(2, 123477336),
+        FakeAudioFrame(3, 123498670),
     )
 
     private data class FakeAudioFrame(
         val frameNumber: Long,
         val captureTimestamp: Long,
-        val encoded: ByteArray,
     )
 
     fun run(input: InputStream, output: OutputStream): Boolean {
@@ -30,7 +29,7 @@ class HandshakeClient {
             output.flush()
             if (!readResult(input, ProtocolConstants.PacketTypeWelcome, ProtocolConstants.ResultSuccess)) return false
 
-            output.write(PacketWriter.writePacket(ProtocolConstants.PacketTypeStartStream, 2, 123456002, HandshakePayloads.startStream(ProtocolConstants.CodecAacLc, 48000, 2, 192000, 20)))
+            output.write(PacketWriter.writePacket(ProtocolConstants.PacketTypeStartStream, 2, 123456002, HandshakePayloads.startStream(ProtocolConstants.CodecAacLc, 48000, 2, 192000, 21)))
             output.flush()
             if (!readResult(input, ProtocolConstants.PacketTypeStreamReady, ProtocolConstants.StreamResultSuccess)) return false
 
@@ -39,17 +38,17 @@ class HandshakeClient {
                     ProtocolConstants.PacketTypeAudio,
                     frame.frameNumber + 2,
                     frame.captureTimestamp,
-                    HandshakePayloads.audio(ProtocolConstants.CodecAacLc, frame.frameNumber, frame.captureTimestamp, 20, frame.encoded)
+                    HandshakePayloads.audio(ProtocolConstants.CodecAacLc, frame.frameNumber, frame.captureTimestamp, 21, FakeAacFrameBytes)
                 ))
                 output.flush()
             }
 
-            output.write(PacketWriter.writePacket(ProtocolConstants.PacketTypePing, 6, 123456006, pingPayload))
+            output.write(PacketWriter.writePacket(ProtocolConstants.PacketTypePing, 6, 123498672, pingPayload))
             output.flush()
             val pong = PacketReader.readPacket(input)
             if (PacketParser.parseHeader(pong).packetType != ProtocolConstants.PacketTypePong || !PacketParser.payload(pong).contentEquals(pingPayload)) return false
 
-            output.write(PacketWriter.writePacket(ProtocolConstants.PacketTypeStopStream, 7, 123456007))
+            output.write(PacketWriter.writePacket(ProtocolConstants.PacketTypeStopStream, 7, 123498673))
             output.flush()
             return input.read() == -1
         } catch (_: IOException) {
