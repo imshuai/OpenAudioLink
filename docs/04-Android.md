@@ -1185,8 +1185,8 @@ Each access unit is immediately wrapped into an AUDIO packet.
 
 Each transmitted access unit is one complete raw AAC-LC frame. ADTS headers,
 LATM/LOAS framing, container bytes, and `BUFFER_FLAG_CODEC_CONFIG` output are
-not sent as `AUDIO.EncodedData`. The encoder requires `csd-0 = 11 90` before
-sending audio.
+not sent as `AUDIO.EncodedData`. Before sending audio, the sender validates
+that the codec-specific output `csd-0` equals `11 90`.
 
 No additional buffering occurs inside the encoder.
 
