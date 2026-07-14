@@ -79,7 +79,8 @@ namespace OpenAudioLink.Tests.UI
                         .GetField("runtime", BindingFlags.Instance | BindingFlags.NonPublic)
                         .GetValue(form);
                     IReadOnlyList<FakePcmFrame> renderedFrames = runtime.Renderer.RenderedFrames;
-                    for (int i = 0; i < renderedFrames.Count; i++)
+                    Assert.AreEqual(captureTimestamps.Length, renderedFrames.Count);
+                    for (int i = 0; i < captureTimestamps.Length; i++)
                     {
                         Assert.AreEqual((uint)(i + 1), renderedFrames[i].FrameNumber);
                         Assert.AreEqual(captureTimestamps[i], renderedFrames[i].CaptureTimestamp);
