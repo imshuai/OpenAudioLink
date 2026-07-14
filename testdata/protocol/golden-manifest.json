@@ -10,8 +10,8 @@
       "sha256": "4ceb3d7469b8ddb9eeca51eb3b381898a6d2f0e273aac3f801138af46338555b"
     },
     "valid-audio-aac.bin": {
-      "length": 47,
-      "sha256": "8a7c75d16f1c24836f598484e61258a8f143625cddeee7baefbd3655f1b4decb"
+      "length": 456,
+      "sha256": "7b7e52d148de8f0e0cb795814314dbc358fab588a4c380e70e32704dad383839"
     },
     "valid-error.bin": {
       "length": 46,
@@ -31,7 +31,7 @@
     },
     "valid-start-stream.bin": {
       "length": 36,
-      "sha256": "4cef75f0778f6e7719354f1f4fd620e36b8b34a1a0c873c843c61b25edc926ad"
+      "sha256": "c0c8e61bf00d73ca16d367a7c5d5405192280e083ce18efcb51599f3e2555d2b"
     },
     "valid-stop-stream.bin": {
       "length": 24,

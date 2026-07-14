@@ -9,6 +9,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "testdata" / "protocol"
+AAC_RAW_FIXTURE = ROOT / "testdata" / "audio" / "aac-lc-48k-stereo-1024.raw"
+AAC_FRAME_DURATION_MS = 21
 
 MAGIC = b"OALP"
 MAJOR = 1
@@ -86,7 +88,7 @@ def start_stream_payload() -> bytes:
             struct.pack(">I", 48000),
             struct.pack(">B", 2),
             struct.pack(">I", 192000),
-            struct.pack(">H", 20),
+            struct.pack(">H", AAC_FRAME_DURATION_MS),
         ]
     )
 
@@ -117,13 +119,13 @@ def error_payload() -> bytes:
 
 
 def audio_payload() -> bytes:
-    encoded = bytes([0x11, 0x22, 0x33, 0x44])
+    encoded = AAC_RAW_FIXTURE.read_bytes()
     return b"".join(
         [
             struct.pack(">B", CODEC_AAC_LC),
             struct.pack(">I", 1),
             struct.pack(">Q", 123456789),
-            struct.pack(">H", 20),
+            struct.pack(">H", AAC_FRAME_DURATION_MS),
             struct.pack(">I", len(encoded)),
             encoded,
         ]
