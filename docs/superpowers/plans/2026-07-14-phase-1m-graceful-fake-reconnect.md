@@ -20,6 +20,8 @@ In scope:
 - Android rejects trailing data and final-read I/O failure.
 - Windows loopback coverage for two sequential sessions on one receiver.
 - Exact fake end-to-end manual steps with rendered counts `0`, `3`, and `6`.
+- Android and Windows default-port constants aligned with canonical TCP `39888`.
+- A docs CI check that rejects implementation default-port drift.
 
 Out of scope:
 
@@ -45,7 +47,19 @@ Out of scope:
 - Modify `docs/10-Testing.md`
   - Add the development fake end-to-end smoke procedure.
 
-No Windows production, Android UI, project, workflow, dependency, or protocol file changes are needed.
+- Modify `tools/check_docs_consistency.py`
+  - Parse both implementation `DefaultPort` values and require canonical TCP `39888`.
+
+- Modify `sender-android/app/src/main/java/com/openaudiolink/protocol/ProtocolConstants.kt`
+  - Correct Android `DefaultPort` to `39888`.
+
+- Modify `receiver-windows/src/OpenAudioLink/Protocol/ProtocolConstants.cs`
+  - Correct Windows `DefaultPort` to `39888`.
+
+- Modify historical phase documents that incorrectly name `37373`
+  - Align Phase 1-A, Phase 1-J, and Phase 1-K with the frozen protocol documentation.
+
+No UI, project, workflow, dependency, or packet wire-format changes are needed.
 
 ---
 
@@ -318,7 +332,141 @@ git commit -m "docs: add fake reconnect smoke test"
 
 ---
 
-### Task 5: Final validation, push and CI
+### Task 5: Enforce and restore the canonical default TCP port
+
+**Files:**
+- Modify: `tools/check_docs_consistency.py`
+- Modify: `sender-android/app/src/main/java/com/openaudiolink/protocol/ProtocolConstants.kt`
+- Modify: `receiver-windows/src/OpenAudioLink/Protocol/ProtocolConstants.cs`
+- Modify: `docs/superpowers/plans/2026-07-08-phase-1a-network-handshake.md`
+- Modify: `docs/superpowers/specs/2026-07-13-phase-1j-windows-default-lan-listener-design.md`
+- Modify: `docs/superpowers/specs/2026-07-13-phase-1k-android-manual-fake-connect-ui-design.md`
+
+- [ ] **Step 1: Add a failing cross-platform default-port check**
+
+In `tools/check_docs_consistency.py`, add these constants after `ROOT`:
+
+```python
+CANONICAL_DEFAULT_PORT = 39888
+DEFAULT_PORT_SOURCES = [
+    (
+        "Android",
+        ROOT / "sender-android/app/src/main/java/com/openaudiolink/protocol/ProtocolConstants.kt",
+        re.compile(r"\bconst val DefaultPort = (\d+)\b"),
+    ),
+    (
+        "Windows",
+        ROOT / "receiver-windows/src/OpenAudioLink/Protocol/ProtocolConstants.cs",
+        re.compile(r"\bpublic const int DefaultPort = (\d+);\b"),
+    ),
+]
+```
+
+Add this function before `main()`:
+
+```python
+def check_default_ports() -> list[str]:
+    errors: list[str] = []
+    for platform, path, pattern in DEFAULT_PORT_SOURCES:
+        match = pattern.search(read(path))
+        if match is None:
+            errors.append(f"missing {platform} DefaultPort: {path.relative_to(ROOT)}")
+        elif int(match.group(1)) != CANONICAL_DEFAULT_PORT:
+            errors.append(
+                f"default port mismatch in {path.relative_to(ROOT)}: "
+                f"{match.group(1)} != {CANONICAL_DEFAULT_PORT}"
+            )
+
+    return errors
+```
+
+In `main()`, add:
+
+```python
+errors.extend(check_default_ports())
+```
+
+- [ ] **Step 2: Verify RED**
+
+Run:
+
+```bash
+python3 tools/check_docs_consistency.py
+```
+
+Expected: exit `1`, reporting both implementation constants as mismatches against canonical port `39888`.
+
+- [ ] **Step 3: Commit the failing check**
+
+```bash
+git add tools/check_docs_consistency.py
+git commit -m "test: enforce canonical default tcp port"
+```
+
+- [ ] **Step 4: Correct both constants and stale phase documents**
+
+Change:
+
+```kotlin
+const val DefaultPort = 37373
+```
+
+to:
+
+```kotlin
+const val DefaultPort = 39888
+```
+
+Change:
+
+```csharp
+public const int DefaultPort = 37373;
+```
+
+to:
+
+```csharp
+public const int DefaultPort = 39888;
+```
+
+Replace every `37373` with `39888` in exactly these documents:
+
+```text
+docs/superpowers/plans/2026-07-08-phase-1a-network-handshake.md
+docs/superpowers/specs/2026-07-13-phase-1j-windows-default-lan-listener-design.md
+docs/superpowers/specs/2026-07-13-phase-1k-android-manual-fake-connect-ui-design.md
+```
+
+- [ ] **Step 5: Verify GREEN**
+
+Run:
+
+```bash
+python3 tools/check_docs_consistency.py
+python3 tools/protocol/generate_golden_packets.py --check
+rg -n "37373" sender-android/app/src/main/java/com/openaudiolink/protocol/ProtocolConstants.kt receiver-windows/src/OpenAudioLink/Protocol/ProtocolConstants.cs docs/superpowers/plans/2026-07-08-phase-1a-network-handshake.md docs/superpowers/specs/2026-07-13-phase-1j-windows-default-lan-listener-design.md docs/superpowers/specs/2026-07-13-phase-1k-android-manual-fake-connect-ui-design.md && exit 1 || true
+git diff --check
+```
+
+Expected:
+
+```text
+docs consistency ok: 12 markdown files checked
+protocol golden packets ok
+```
+
+The `rg` command finds no stale port in the corrected implementation or historical phase files, and `git diff --check` prints no output.
+
+- [ ] **Step 6: Commit the correction**
+
+```bash
+git add sender-android/app/src/main/java/com/openaudiolink/protocol/ProtocolConstants.kt receiver-windows/src/OpenAudioLink/Protocol/ProtocolConstants.cs docs/superpowers/plans/2026-07-08-phase-1a-network-handshake.md docs/superpowers/specs/2026-07-13-phase-1j-windows-default-lan-listener-design.md docs/superpowers/specs/2026-07-13-phase-1k-android-manual-fake-connect-ui-design.md
+git commit -m "fix: align default tcp port"
+```
+
+---
+
+### Task 6: Final validation, push and CI
 
 **Files:**
 - Validate repository state only.

@@ -60,6 +60,23 @@ The protocol requires the receiver to close TCP after `STOP_STREAM`. Returning A
 
 ---
 
+## Review-Discovered Default Port Drift
+
+Phase 1-M review found that both implementations currently define `DefaultPort = 37373`, while the frozen project documentation consistently defines the Version 1 TCP port as `39888`:
+
+- `docs/03-Protocol.md` defines `receiver.port` and the default network port as `39888`.
+- `docs/08-Configuration.md` defines `network.tcpPort` as `39888`.
+- `docs/10-Testing.md` uses TCP `39888` in the platform and configuration matrices.
+- Deployment and discovery documentation also use `39888`.
+
+Git history shows `37373` entered through the Phase 1-A implementation plan even though `docs/03-Protocol.md` already specified `39888`. Phase 1-J and Phase 1-K then treated that implementation value as authoritative.
+
+Phase 1-M must correct both platform constants to `39888`, repair the stale Phase 1-A/1-J/1-K documentation, and add a static consistency check that fails when either implementation drifts from the canonical port.
+
+This is an implementation/configuration correction. It does not change any protocol packet bytes.
+
+---
+
 ## Alternatives
 
 ### A. Wait for receiver TCP close
@@ -102,7 +119,7 @@ No `MainActivity` change is needed. Its existing flow re-enables the connect but
 
 ### Windows session reuse
 
-No Windows production change is expected. Add a loopback integration test around the existing `TcpReceiver` lifecycle:
+No Windows session-lifecycle production change is expected. Add a loopback integration test around the existing `TcpReceiver` lifecycle:
 
 1. Connect the first client and complete `HELLO` and `START_STREAM`.
 2. Send `STOP_STREAM`.
@@ -125,6 +142,22 @@ Add an explicit development-only smoke procedure to `docs/10-Testing.md`:
 5. Confirm Android reaches `Success` and Windows reaches `Rendered frames: 6`.
 
 This procedure validates the current fake transport path. It does not replace the release end-to-end test for discovery, capture, real AAC, audible playback, or latency.
+
+### Canonical default port alignment
+
+Set both implementation constants to the documented Version 1 TCP port:
+
+```text
+ProtocolConstants.DefaultPort = 39888
+```
+
+Extend `tools/check_docs_consistency.py` to parse the Android and Windows `DefaultPort` declarations and require `39888`.
+
+Correct the stale numeric examples in:
+
+- `docs/superpowers/plans/2026-07-08-phase-1a-network-handshake.md`
+- `docs/superpowers/specs/2026-07-13-phase-1j-windows-default-lan-listener-design.md`
+- `docs/superpowers/specs/2026-07-13-phase-1k-android-manual-fake-connect-ui-design.md`
 
 ---
 
@@ -160,6 +193,8 @@ Update `TcpReceiverTests` to prove:
 
 ### Repository checks
 
+First prove the new static port check fails against the old implementation constants. After correcting them, the same check must pass.
+
 Run:
 
 ```bash
@@ -192,6 +227,9 @@ Phase 1-M is complete when:
 - One running `TcpReceiver` accepts a second session after the first session stops.
 - Sequential accepted sessions have distinct incrementing session IDs.
 - `docs/10-Testing.md` contains exact two-run fake E2E steps with expected `3` then `6` rendered frames.
+- Android and Windows both define `ProtocolConstants.DefaultPort = 39888`.
+- The Phase 1-A, Phase 1-J, and Phase 1-K documents no longer name `37373` as the OpenAudioLink default port.
+- Docs CI parses both implementation constants and rejects future default-port drift.
 - Existing protocol packets and fake audio behavior remain unchanged.
 - No sleep, retry policy, protocol change, UI change, or dependency is added.
 - Docs, Android, and Windows CI workflows on the phase branch are green.
