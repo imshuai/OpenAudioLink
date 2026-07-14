@@ -85,7 +85,7 @@ namespace OpenAudioLink.Tests.Receiver
         {
             FakeAudioRenderer renderer = new FakeAudioRenderer();
             byte[] pcmBytes = Payload(0x30);
-            FakePcmFrame frame = new FakePcmFrame(1u, 100UL, 20, pcmBytes);
+            FakePcmFrame frame = new FakePcmFrame(1u, 100UL, 21, pcmBytes);
 
             renderer.Render(frame);
             pcmBytes[0] = 0x7f;
@@ -101,7 +101,7 @@ namespace OpenAudioLink.Tests.Receiver
 
         private static byte[] AudioPayload(uint frameNumber, ulong captureTimestamp, byte[] encoded)
         {
-            return HandshakePayloads.Audio(ProtocolConstants.CodecAacLc, frameNumber, captureTimestamp, 20, encoded);
+            return HandshakePayloads.Audio(ProtocolConstants.CodecAacLc, frameNumber, captureTimestamp, 21, encoded);
         }
 
         private static byte[] Payload(byte first)
@@ -113,7 +113,7 @@ namespace OpenAudioLink.Tests.Receiver
         {
             Assert.AreEqual(frameNumber, frame.FrameNumber);
             Assert.AreEqual(captureTimestamp, frame.CaptureTimestamp);
-            Assert.AreEqual((ushort)20, frame.FrameDuration);
+            Assert.AreEqual((ushort)21, frame.FrameDuration);
             CollectionAssert.AreEqual(pcmBytes, frame.PcmBytes);
         }
     }

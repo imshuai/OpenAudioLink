@@ -2,6 +2,7 @@ using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using OpenAudioLink.Protocol;
 using OpenAudioLink.Receiver;
+using OpenAudioLink.Tests;
 
 namespace OpenAudioLink.Tests.Receiver
 {
@@ -38,7 +39,7 @@ namespace OpenAudioLink.Tests.Receiver
                 ProtocolConstants.PacketTypeStartStream,
                 3u,
                 123456002UL,
-                HandshakePayloads.StartStream(ProtocolConstants.CodecAacLc, 48000u, 2, 192000u, 20));
+                HandshakePayloads.StartStream(ProtocolConstants.CodecAacLc, 48000u, 2, 192000u, 21));
 
             byte[] response = session.Process(start);
             PacketHeader header = PacketParser.ParseHeader(response);
@@ -58,7 +59,7 @@ namespace OpenAudioLink.Tests.Receiver
                 ProtocolConstants.PacketTypeStartStream,
                 3u,
                 123456002UL,
-                HandshakePayloads.StartStream(2, 48000u, 2, 192000u, 20));
+                HandshakePayloads.StartStream(2, 48000u, 2, 192000u, 21));
 
             byte[] response = session.Process(start);
             PacketHeader header = PacketParser.ParseHeader(response);
@@ -216,7 +217,7 @@ namespace OpenAudioLink.Tests.Receiver
 
         private static byte[] ValidAudioPayload()
         {
-            return HandshakePayloads.Audio(ProtocolConstants.CodecAacLc, 1u, 123456789UL, 20, new byte[] { 0x11, 0x22, 0x33, 0x44 });
+            return HandshakePayloads.Audio(ProtocolConstants.CodecAacLc, 1u, 123456789UL, 21, TestFixtures.Read("testdata/audio/aac-lc-48k-stereo-1024.raw"));
         }
 
         private static ReceiverSession StreamingSession()
@@ -231,7 +232,7 @@ namespace OpenAudioLink.Tests.Receiver
                 ProtocolConstants.PacketTypeStartStream,
                 3u,
                 123456002UL,
-                HandshakePayloads.StartStream(ProtocolConstants.CodecAacLc, 48000u, 2, 192000u, 20)));
+                HandshakePayloads.StartStream(ProtocolConstants.CodecAacLc, 48000u, 2, 192000u, 21)));
             return session;
         }
     }

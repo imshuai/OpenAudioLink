@@ -11,20 +11,20 @@ namespace OpenAudioLink.Tests.Receiver
         public void DecodeMapsAudioPayloadToFakePcmFrame()
         {
             byte[] encoded = new byte[] { 0x11, 0x22, 0x33 };
-            byte[] payload = HandshakePayloads.Audio(ProtocolConstants.CodecAacLc, 7u, 123456789UL, 20, encoded);
+            byte[] payload = HandshakePayloads.Audio(ProtocolConstants.CodecAacLc, 7u, 123456789UL, 21, encoded);
 
             FakePcmFrame frame = new FakeAacDecoder().Decode(payload);
 
             Assert.AreEqual(7u, frame.FrameNumber);
             Assert.AreEqual(123456789UL, frame.CaptureTimestamp);
-            Assert.AreEqual((ushort)20, frame.FrameDuration);
+            Assert.AreEqual((ushort)21, frame.FrameDuration);
             CollectionAssert.AreEqual(encoded, frame.PcmBytes);
         }
 
         [TestMethod]
         public void DecodeRejectsUnsupportedCodec()
         {
-            byte[] payload = HandshakePayloads.Audio(ProtocolConstants.CodecOpus, 1u, 2UL, 20, new byte[] { 0x01 });
+            byte[] payload = HandshakePayloads.Audio(ProtocolConstants.CodecOpus, 1u, 2UL, 21, new byte[] { 0x01 });
 
             Assert.ThrowsException<PacketParseException>(() => new FakeAacDecoder().Decode(payload));
         }
@@ -32,7 +32,7 @@ namespace OpenAudioLink.Tests.Receiver
         [TestMethod]
         public void DecodeRejectsLengthMismatch()
         {
-            byte[] payload = HandshakePayloads.Audio(ProtocolConstants.CodecAacLc, 1u, 2UL, 20, new byte[] { 0x01, 0x02 });
+            byte[] payload = HandshakePayloads.Audio(ProtocolConstants.CodecAacLc, 1u, 2UL, 21, new byte[] { 0x01, 0x02 });
             byte[] truncated = new byte[payload.Length - 1];
             System.Buffer.BlockCopy(payload, 0, truncated, 0, truncated.Length);
 
@@ -43,7 +43,7 @@ namespace OpenAudioLink.Tests.Receiver
         public void FakePcmFrameClonesPcmBytes()
         {
             byte[] pcmBytes = new byte[] { 0x31, 0x32 };
-            FakePcmFrame frame = new FakePcmFrame(1u, 2UL, 20, pcmBytes);
+            FakePcmFrame frame = new FakePcmFrame(1u, 2UL, 21, pcmBytes);
 
             pcmBytes[0] = 0x7f;
             CollectionAssert.AreEqual(new byte[] { 0x31, 0x32 }, frame.PcmBytes);

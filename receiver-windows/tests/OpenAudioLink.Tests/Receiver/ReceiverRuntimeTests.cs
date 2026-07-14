@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using OpenAudioLink.Tests;
 using OpenAudioLink.Protocol;
 using OpenAudioLink.Receiver;
 
@@ -47,35 +48,36 @@ namespace OpenAudioLink.Tests.Receiver
                 Write(stream, ProtocolConstants.PacketTypeHello, 1u, HandshakePayloads.Hello("Android Phone", "1.0.0", ProtocolConstants.PlatformAndroid, ProtocolConstants.CapabilityAacSupported));
                 AssertPacket(stream, ProtocolConstants.PacketTypeWelcome, HandshakePayloads.Welcome(ProtocolConstants.ResultSuccess, "Windows PC", "1.0.0", 1));
 
-                Write(stream, ProtocolConstants.PacketTypeStartStream, 2u, HandshakePayloads.StartStream(ProtocolConstants.CodecAacLc, 48000u, 2, 192000u, 20));
+                Write(stream, ProtocolConstants.PacketTypeStartStream, 2u, HandshakePayloads.StartStream(ProtocolConstants.CodecAacLc, 48000u, 2, 192000u, 21));
                 AssertPacket(stream, ProtocolConstants.PacketTypeStreamReady, HandshakePayloads.StreamReady(ProtocolConstants.StreamResultSuccess, ProtocolConstants.CodecAacLc, 48000u, 2));
 
-                byte[][] encodedFrames =
+                byte[] encodedFrame = TestFixtures.Read("testdata/audio/aac-lc-48k-stereo-1024.raw");
+                ulong[] captureTimestamps =
                 {
-                    new byte[] { 0x11, 0x22, 0x33, 0x44 },
-                    new byte[] { 0x21, 0x22, 0x23, 0x24 },
-                    new byte[] { 0x31, 0x32, 0x33, 0x34 },
+                    123456003UL,
+                    123477336UL,
+                    123498670UL,
                 };
 
-                for (int i = 0; i < encodedFrames.Length; i++)
+                for (int i = 0; i < captureTimestamps.Length; i++)
                 {
-                    byte[] payload = HandshakePayloads.Audio(ProtocolConstants.CodecAacLc, (uint)(i + 1), 123456003UL + (ulong)(20 * i), 20, encodedFrames[i]);
+                    byte[] payload = HandshakePayloads.Audio(ProtocolConstants.CodecAacLc, (uint)(i + 1), captureTimestamps[i], 21, encodedFrame);
                     Write(stream, ProtocolConstants.PacketTypeAudio, 3u + (uint)i, payload);
                 }
 
-                byte[] ping = HandshakePayloads.Ping(5u, 123456005UL);
+                byte[] ping = HandshakePayloads.Ping(5u, 123498671UL);
                 Write(stream, ProtocolConstants.PacketTypePing, 6u, ping);
                 AssertPacket(stream, ProtocolConstants.PacketTypePong, ping);
 
                 Assert.AreEqual(3, runtime.Renderer.RenderedCount);
                 Assert.AreEqual(0, runtime.Queue.Count);
                 IReadOnlyList<FakePcmFrame> renderedFrames = runtime.Renderer.RenderedFrames;
-                for (int i = 0; i < encodedFrames.Length; i++)
+                for (int i = 0; i < captureTimestamps.Length; i++)
                 {
                     Assert.AreEqual((uint)(i + 1), renderedFrames[i].FrameNumber);
-                    Assert.AreEqual(123456003UL + (ulong)(20 * i), renderedFrames[i].CaptureTimestamp);
-                    Assert.AreEqual((ushort)20, renderedFrames[i].FrameDuration);
-                    CollectionAssert.AreEqual(encodedFrames[i], renderedFrames[i].PcmBytes);
+                    Assert.AreEqual(captureTimestamps[i], renderedFrames[i].CaptureTimestamp);
+                    Assert.AreEqual((ushort)21, renderedFrames[i].FrameDuration);
+                    CollectionAssert.AreEqual(encodedFrame, renderedFrames[i].PcmBytes);
                 }
 
                 Write(stream, ProtocolConstants.PacketTypeStopStream, 7u, new byte[0]);
