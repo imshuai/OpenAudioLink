@@ -97,6 +97,16 @@ namespace OpenAudioLink.Tests.Receiver
         }
 
         [TestMethod]
+        public void ClientCanReconnectAfterStopStream()
+        {
+            using (TcpReceiver receiver = TcpReceiver.StartLoopback())
+            {
+                CompleteAndStop(receiver, 1UL);
+                CompleteAndStop(receiver, 2UL);
+            }
+        }
+
+        [TestMethod]
         public void MalformedPacketClosesConnection()
         {
             using (TcpReceiver receiver = TcpReceiver.Start(IPAddress.Loopback, 0))
@@ -108,6 +118,23 @@ namespace OpenAudioLink.Tests.Receiver
 
                 stream.Write(malformed, 0, malformed.Length);
 
+                Assert.AreEqual(0, stream.Read(new byte[1], 0, 1));
+            }
+        }
+
+        private static void CompleteAndStop(TcpReceiver receiver, ulong sessionId)
+        {
+            using (TcpClient client = Connect(receiver))
+            {
+                NetworkStream stream = client.GetStream();
+
+                Write(stream, ProtocolConstants.PacketTypeHello, 1u, HandshakePayloads.Hello("Android Phone", "1.0.0", ProtocolConstants.PlatformAndroid, ProtocolConstants.CapabilityAacSupported));
+                AssertPacket(stream, ProtocolConstants.PacketTypeWelcome, HandshakePayloads.Welcome(ProtocolConstants.ResultSuccess, "Windows PC", "1.0.0", sessionId));
+
+                Write(stream, ProtocolConstants.PacketTypeStartStream, 2u, HandshakePayloads.StartStream(ProtocolConstants.CodecAacLc, 48000u, 2, 192000u, 20));
+                AssertPacket(stream, ProtocolConstants.PacketTypeStreamReady, HandshakePayloads.StreamReady(ProtocolConstants.StreamResultSuccess, ProtocolConstants.CodecAacLc, 48000u, 2));
+
+                Write(stream, ProtocolConstants.PacketTypeStopStream, 3u, new byte[0]);
                 Assert.AreEqual(0, stream.Read(new byte[1], 0, 1));
             }
         }
