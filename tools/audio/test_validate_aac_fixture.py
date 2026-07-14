@@ -8,9 +8,12 @@ from contextlib import redirect_stderr
 from unittest.mock import patch
 
 from validate_aac_fixture import (
+    CONTINUOUS_ADTS_NAME,
     FixtureValidationError,
+    split_adts_frames,
     validate_adts,
     validate_asc,
+    validate_continuous_adts,
     validate_manifest,
     main,
 )
@@ -19,6 +22,7 @@ RAW = b"\x12\x34\x56"
 ADTS = "aac-lc-48k-stereo-1024.adts"
 RAW_NAME = "aac-lc-48k-stereo-1024.raw"
 ASC = "aac-lc-48k-stereo.asc"
+CONTINUOUS = CONTINUOUS_ADTS_NAME
 
 
 def adts(
@@ -67,7 +71,12 @@ def asc(
 
 
 def files() -> dict[str, bytes]:
-    return {ADTS: adts(), RAW_NAME: RAW, ASC: asc()}
+    return {
+        ADTS: adts(),
+        RAW_NAME: RAW,
+        ASC: asc(),
+        CONTINUOUS: b"".join([adts()] + [adts(bytes([index])) for index in range(1, 6)]),
+    }
 
 
 def manifest(data: dict[str, bytes]) -> dict[str, object]:
@@ -77,6 +86,7 @@ def manifest(data: dict[str, bytes]) -> dict[str, object]:
             "ffmpegVersion": "ffmpeg version test-build",
             "command": ["ffmpeg", "-f", "lavfi"],
             "selectedFrameIndex": 2,
+            "selectedFrameCount": 6,
         },
         "files": {
             name: {
@@ -99,6 +109,29 @@ class FixtureValidationTests(unittest.TestCase):
         validate_adts(data[ADTS], data[RAW_NAME])
         validate_asc(data[ASC])
         validate_manifest(manifest(data), data)
+
+    def test_continuous_adts_valid_values_pass(self) -> None:
+        data = files()
+        frames = split_adts_frames(data[CONTINUOUS])
+
+        self.assertEqual(6, len(frames))
+        self.assertEqual(data[ADTS], frames[0])
+        validate_continuous_adts(data[CONTINUOUS], data[ADTS])
+
+    def test_continuous_adts_mutations_are_independently_rejected(self) -> None:
+        data = files()
+        frames = split_adts_frames(data[CONTINUOUS])
+        malformed = list(frames)
+        malformed[2] = b"\x00" + malformed[2][1:]
+        cases = [
+            ("count", b"".join(frames[:5]), "frame count"),
+            ("middle", b"".join(malformed), "ADTS sync"),
+            ("truncated", data[CONTINUOUS][:-1], "truncated ADTS frame"),
+            ("trailing", data[CONTINUOUS] + b"\x00", "truncated ADTS header"),
+        ]
+        for name, value, message in cases:
+            with self.subTest(name=name):
+                self.rejected(message, lambda v=value: validate_continuous_adts(v, data[ADTS]))
 
     def test_adts_mutations_are_independently_rejected(self) -> None:
         cases = [
@@ -186,6 +219,21 @@ class FixtureValidationTests(unittest.TestCase):
                 "selected frame index",
                 changed(lambda value: value["generator"].update(selectedFrameIndex=1)),
             ),
+            (
+                "count",
+                "selected frame count",
+                changed(lambda value: value["generator"].update(selectedFrameCount=5)),
+            ),
+            (
+                "continuous length",
+                "length mismatch",
+                changed(lambda value: value["files"][CONTINUOUS].update(length=1)),
+            ),
+            (
+                "continuous hash",
+                "SHA-256 mismatch",
+                changed(lambda value: value["files"][CONTINUOUS].update(sha256="0" * 64)),
+            ),
         ]
         for name, message, value in cases:
             with self.subTest(name=name):
@@ -199,6 +247,16 @@ class FixtureValidationTests(unittest.TestCase):
                 "selected index float",
                 lambda value: value["generator"].update(selectedFrameIndex=2.0),
                 "selected frame index",
+            ),
+            (
+                "selected count bool",
+                lambda value: value["generator"].update(selectedFrameCount=True),
+                "selected frame count",
+            ),
+            (
+                "selected count float",
+                lambda value: value["generator"].update(selectedFrameCount=6.0),
+                "selected frame count",
             ),
             (
                 "length float",
