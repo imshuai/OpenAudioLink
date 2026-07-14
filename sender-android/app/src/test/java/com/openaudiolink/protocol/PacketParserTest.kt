@@ -1,11 +1,10 @@
 package com.openaudiolink.protocol
 
+import com.openaudiolink.TestFixtures
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
-import java.io.File
-import java.io.FileNotFoundException
 
 class PacketParserTest {
     @Test
@@ -39,15 +38,27 @@ class PacketParserTest {
     }
 
     @Test
-    fun validateAacPayload_validAudioPayload_doesNotThrow() {
-        val packet = readFixture("valid-audio-aac.bin")
-
-        val header = PacketParser.parseHeader(packet)
+    fun validateAacPayload_validAudioPayload_exposesCanonicalRawFrame() {
+        val packet = TestFixtures.read("testdata/protocol/valid-audio-aac.bin")
         val payload = PacketParser.payload(packet)
+        val encoded = TestFixtures.read("testdata/audio/aac-lc-48k-stereo-1024.raw")
 
-        assertEquals(ProtocolConstants.PacketTypeAudio, header.packetType)
-        assertEquals(ProtocolConstants.CodecAacLc, payload[0].toInt() and 0xff)
-        assertEquals(23, payload.size)
+        assertEquals(ProtocolConstants.PacketTypeAudio, PacketParser.parseHeader(packet).packetType)
+        assertEquals(ProtocolConstants.AudioPayloadHeaderSize + encoded.size, payload.size)
+        assertArrayEquals(
+            HandshakePayloads.audio(
+                ProtocolConstants.CodecAacLc,
+                1,
+                123456789,
+                21,
+                encoded,
+            ),
+            payload,
+        )
+        assertArrayEquals(
+            encoded,
+            payload.copyOfRange(ProtocolConstants.AudioPayloadHeaderSize, payload.size),
+        )
         AudioPayloadValidator.validateAacPayload(payload)
     }
 
@@ -83,9 +94,8 @@ class PacketParserTest {
         val cases = listOf(
             Triple("valid-hello.bin", ProtocolConstants.PacketTypeHello, "000d416e64726f69642050686f6e650005312e302e3001000100000001"),
             Triple("valid-welcome.bin", ProtocolConstants.PacketTypeWelcome, "00000a57696e646f77732050430005312e302e300102030405060708"),
-            Triple("valid-start-stream.bin", ProtocolConstants.PacketTypeStartStream, "010000bb80020002ee000014"),
+            Triple("valid-start-stream.bin", ProtocolConstants.PacketTypeStartStream, "010000bb80020002ee000015"),
             Triple("valid-stream-ready.bin", ProtocolConstants.PacketTypeStreamReady, "00010000bb8002"),
-            Triple("valid-audio-aac.bin", ProtocolConstants.PacketTypeAudio, "010000000100000000075bcd1500140000000411223344"),
             Triple("valid-stop-stream.bin", ProtocolConstants.PacketTypeStopStream, ""),
             Triple("valid-ping.bin", ProtocolConstants.PacketTypePing, "0000000500000000075bca05"),
             Triple("valid-pong.bin", ProtocolConstants.PacketTypePong, "0000000500000000075bca05"),
@@ -110,16 +120,5 @@ class PacketParserTest {
 
     private fun hex(value: String): ByteArray = value.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
 
-    private fun readFixture(name: String): ByteArray {
-        var directory: File? = File(System.getProperty("user.dir")).absoluteFile
-        while (directory != null) {
-            val candidates = listOf(
-                File(directory, "testdata/protocol/$name"),
-                File(directory, "../testdata/protocol/$name"),
-            )
-            candidates.firstOrNull { it.isFile }?.let { return it.readBytes() }
-            directory = directory.parentFile
-        }
-        throw FileNotFoundException("Fixture not found: $name")
-    }
+    private fun readFixture(name: String) = TestFixtures.read("testdata/protocol/$name")
 }

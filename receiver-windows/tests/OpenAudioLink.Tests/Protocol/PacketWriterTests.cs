@@ -1,7 +1,6 @@
-using System;
-using System.IO;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using OpenAudioLink.Protocol;
+using OpenAudioLink.Tests;
 
 namespace OpenAudioLink.Tests.Protocol
 {
@@ -17,7 +16,7 @@ namespace OpenAudioLink.Tests.Protocol
                 123456000UL,
                 HandshakePayloads.Hello("Android Phone", "1.0.0", ProtocolConstants.PlatformAndroid, ProtocolConstants.CapabilityAacSupported));
 
-            CollectionAssert.AreEqual(ReadFixture("valid-hello.bin"), packet);
+            CollectionAssert.AreEqual(TestFixtures.Read("testdata/protocol/valid-hello.bin"), packet);
         }
 
         [TestMethod]
@@ -29,7 +28,7 @@ namespace OpenAudioLink.Tests.Protocol
                 123456001UL,
                 HandshakePayloads.Welcome(ProtocolConstants.ResultSuccess, "Windows PC", "1.0.0", 0x0102030405060708UL));
 
-            CollectionAssert.AreEqual(ReadFixture("valid-welcome.bin"), packet);
+            CollectionAssert.AreEqual(TestFixtures.Read("testdata/protocol/valid-welcome.bin"), packet);
         }
 
         [TestMethod]
@@ -39,9 +38,9 @@ namespace OpenAudioLink.Tests.Protocol
                 ProtocolConstants.PacketTypeStartStream,
                 3u,
                 123456002UL,
-                HandshakePayloads.StartStream(ProtocolConstants.CodecAacLc, 48000u, 2, 192000u, 20));
+                HandshakePayloads.StartStream(ProtocolConstants.CodecAacLc, 48000u, 2, 192000u, 21));
 
-            CollectionAssert.AreEqual(ReadFixture("valid-start-stream.bin"), packet);
+            CollectionAssert.AreEqual(TestFixtures.Read("testdata/protocol/valid-start-stream.bin"), packet);
         }
 
         [TestMethod]
@@ -53,7 +52,7 @@ namespace OpenAudioLink.Tests.Protocol
                 123456003UL,
                 HandshakePayloads.StreamReady(ProtocolConstants.StreamResultSuccess, ProtocolConstants.CodecAacLc, 48000u, 2));
 
-            CollectionAssert.AreEqual(ReadFixture("valid-stream-ready.bin"), packet);
+            CollectionAssert.AreEqual(TestFixtures.Read("testdata/protocol/valid-stream-ready.bin"), packet);
         }
 
         [TestMethod]
@@ -62,10 +61,10 @@ namespace OpenAudioLink.Tests.Protocol
             byte[] payload = HandshakePayloads.Ping(5u, 123456005UL);
 
             CollectionAssert.AreEqual(
-                ReadFixture("valid-ping.bin"),
+                TestFixtures.Read("testdata/protocol/valid-ping.bin"),
                 PacketWriter.WritePacket(ProtocolConstants.PacketTypePing, 5u, 123456004UL, payload));
             CollectionAssert.AreEqual(
-                ReadFixture("valid-pong.bin"),
+                TestFixtures.Read("testdata/protocol/valid-pong.bin"),
                 PacketWriter.WritePacket(ProtocolConstants.PacketTypePong, 6u, 123456004UL, payload));
         }
 
@@ -74,19 +73,28 @@ namespace OpenAudioLink.Tests.Protocol
         {
             byte[] packet = PacketWriter.WritePacket(ProtocolConstants.PacketTypeStopStream, 7u, 123456006UL, new byte[0]);
 
-            CollectionAssert.AreEqual(ReadFixture("valid-stop-stream.bin"), packet);
+            CollectionAssert.AreEqual(TestFixtures.Read("testdata/protocol/valid-stop-stream.bin"), packet);
         }
 
         [TestMethod]
         public void WriteAudio_MatchesGoldenPacket()
         {
+            byte[] encoded = TestFixtures.Read(
+                "testdata/audio/aac-lc-48k-stereo-1024.raw");
             byte[] packet = PacketWriter.WritePacket(
                 ProtocolConstants.PacketTypeAudio,
                 2u,
                 123456789UL,
-                HandshakePayloads.Audio(ProtocolConstants.CodecAacLc, 1u, 123456789UL, 20, new byte[] { 0x11, 0x22, 0x33, 0x44 }));
+                HandshakePayloads.Audio(
+                    ProtocolConstants.CodecAacLc,
+                    1u,
+                    123456789UL,
+                    21,
+                    encoded));
 
-            CollectionAssert.AreEqual(ReadFixture("valid-audio-aac.bin"), packet);
+            CollectionAssert.AreEqual(
+                TestFixtures.Read("testdata/protocol/valid-audio-aac.bin"),
+                packet);
         }
 
         [TestMethod]
@@ -98,24 +106,7 @@ namespace OpenAudioLink.Tests.Protocol
                 123456007UL,
                 HandshakePayloads.Error(ProtocolConstants.ErrorUnsupportedCodec, ProtocolConstants.ErrorSeverityRecoverable, "Unsupported codec"));
 
-            CollectionAssert.AreEqual(ReadFixture("valid-error.bin"), packet);
-        }
-
-        private static byte[] ReadFixture(string name)
-        {
-            DirectoryInfo directory = new DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory);
-            while (directory != null)
-            {
-                string path = Path.Combine(directory.FullName, "testdata", "protocol", name);
-                if (File.Exists(path))
-                {
-                    return File.ReadAllBytes(path);
-                }
-
-                directory = directory.Parent;
-            }
-
-            throw new FileNotFoundException("Fixture not found.", name);
+            CollectionAssert.AreEqual(TestFixtures.Read("testdata/protocol/valid-error.bin"), packet);
         }
     }
 }

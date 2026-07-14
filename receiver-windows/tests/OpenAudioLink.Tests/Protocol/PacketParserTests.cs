@@ -1,7 +1,7 @@
 using System;
-using System.IO;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using OpenAudioLink.Protocol;
+using OpenAudioLink.Tests;
 
 namespace OpenAudioLink.Tests.Protocol
 {
@@ -11,7 +11,7 @@ namespace OpenAudioLink.Tests.Protocol
         [TestMethod]
         public void ParseHeader_ValidHello_ReturnsHeader()
         {
-            byte[] packet = ReadFixture("valid-hello.bin");
+            byte[] packet = TestFixtures.Read("testdata/protocol/valid-hello.bin");
 
             PacketHeader header = PacketParser.ParseHeader(packet);
             byte[] payload = PacketParser.Payload(packet);
@@ -27,26 +27,41 @@ namespace OpenAudioLink.Tests.Protocol
         [TestMethod]
         public void ParseHeader_InvalidMagic_Throws()
         {
-            Assert.ThrowsException<PacketParseException>(() => PacketParser.ParseHeader(ReadFixture("invalid-magic.bin")));
+            Assert.ThrowsException<PacketParseException>(() => PacketParser.ParseHeader(TestFixtures.Read("testdata/protocol/invalid-magic.bin")));
         }
 
         [TestMethod]
         public void ParseHeader_InvalidLength_Throws()
         {
-            Assert.ThrowsException<PacketParseException>(() => PacketParser.ParseHeader(ReadFixture("invalid-length.bin")));
+            Assert.ThrowsException<PacketParseException>(() => PacketParser.ParseHeader(TestFixtures.Read("testdata/protocol/invalid-length.bin")));
         }
 
         [TestMethod]
-        public void ValidateAacPayload_ValidAudioPayload_DoesNotThrow()
+        public void ValidateAacPayload_ValidAudioPayload_ExposesCanonicalRawFrame()
         {
-            byte[] packet = ReadFixture("valid-audio-aac.bin");
-
-            PacketHeader header = PacketParser.ParseHeader(packet);
+            byte[] packet = TestFixtures.Read("testdata/protocol/valid-audio-aac.bin");
             byte[] payload = PacketParser.Payload(packet);
+            byte[] encoded = TestFixtures.Read(
+                "testdata/audio/aac-lc-48k-stereo-1024.raw");
+            byte[] extracted = new byte[encoded.Length];
+            Buffer.BlockCopy(
+                payload,
+                ProtocolConstants.AudioPayloadHeaderSize,
+                extracted,
+                0,
+                extracted.Length);
 
-            Assert.AreEqual(ProtocolConstants.PacketTypeAudio, header.PacketType);
-            Assert.AreEqual(ProtocolConstants.CodecAacLc, payload[0]);
-            Assert.AreEqual(23, payload.Length);
+            Assert.AreEqual(ProtocolConstants.PacketTypeAudio, PacketParser.ParseHeader(packet).PacketType);
+            Assert.AreEqual(ProtocolConstants.AudioPayloadHeaderSize + encoded.Length, payload.Length);
+            CollectionAssert.AreEqual(
+                HandshakePayloads.Audio(
+                    ProtocolConstants.CodecAacLc,
+                    1u,
+                    123456789UL,
+                    21,
+                    encoded),
+                payload);
+            CollectionAssert.AreEqual(encoded, extracted);
             AudioPayloadValidator.ValidateAacPayload(payload);
         }
 
@@ -79,7 +94,7 @@ namespace OpenAudioLink.Tests.Protocol
         {
             AssertFixture("valid-hello.bin", ProtocolConstants.PacketTypeHello, "000d416e64726f69642050686f6e650005312e302e3001000100000001");
             AssertFixture("valid-welcome.bin", ProtocolConstants.PacketTypeWelcome, "00000a57696e646f77732050430005312e302e300102030405060708");
-            AssertFixture("valid-start-stream.bin", ProtocolConstants.PacketTypeStartStream, "010000bb80020002ee000014");
+            AssertFixture("valid-start-stream.bin", ProtocolConstants.PacketTypeStartStream, "010000bb80020002ee000015");
             AssertFixture("valid-stream-ready.bin", ProtocolConstants.PacketTypeStreamReady, "00010000bb8002");
             AssertFixture("valid-ping.bin", ProtocolConstants.PacketTypePing, "0000000500000000075bca05");
             AssertFixture("valid-pong.bin", ProtocolConstants.PacketTypePong, "0000000500000000075bca05");
@@ -90,12 +105,12 @@ namespace OpenAudioLink.Tests.Protocol
         [TestMethod]
         public void Payload_InvalidDeclaredLength_Throws()
         {
-            Assert.ThrowsException<PacketParseException>(() => PacketParser.Payload(ReadFixture("invalid-length.bin")));
+            Assert.ThrowsException<PacketParseException>(() => PacketParser.Payload(TestFixtures.Read("testdata/protocol/invalid-length.bin")));
         }
 
         private static void AssertFixture(string name, byte packetType, string payloadHex)
         {
-            byte[] packet = ReadFixture(name);
+            byte[] packet = TestFixtures.Read("testdata/protocol/" + name);
 
             Assert.AreEqual(packetType, PacketParser.ParseHeader(packet).PacketType);
             CollectionAssert.AreEqual(FromHex(payloadHex), PacketParser.Payload(packet));
@@ -103,7 +118,7 @@ namespace OpenAudioLink.Tests.Protocol
 
         private static byte[] ValidAudioPayload()
         {
-            return PacketParser.Payload(ReadFixture("valid-audio-aac.bin"));
+            return PacketParser.Payload(TestFixtures.Read("testdata/protocol/valid-audio-aac.bin"));
         }
 
         private static byte[] FromHex(string hex)
@@ -115,23 +130,6 @@ namespace OpenAudioLink.Tests.Protocol
             }
 
             return bytes;
-        }
-
-        private static byte[] ReadFixture(string name)
-        {
-            DirectoryInfo directory = new DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory);
-            while (directory != null)
-            {
-                string path = Path.Combine(directory.FullName, "testdata", "protocol", name);
-                if (File.Exists(path))
-                {
-                    return File.ReadAllBytes(path);
-                }
-
-                directory = directory.Parent;
-            }
-
-            throw new FileNotFoundException("Fixture not found.", name);
         }
     }
 }
