@@ -1740,7 +1740,7 @@ grep -F 'Android API level: 29' "$LOG_FILE"
 test "$(grep -cF 'AAC encoder:' "$LOG_FILE")" -ge 2
 test "$(grep -cF 'AAC output: 13 AU(s)' "$LOG_FILE")" -ge 2
 grep -F 'MediaCodec interop decoded 13 access units to 53248 PCM bytes.' "$LOG_FILE"
-grep -F 'Passed!' "$LOG_FILE"
+grep -F 'Test Run Successful.' "$LOG_FILE"
 ```
 
 Expected Android jobs:
@@ -1766,6 +1766,7 @@ gate. They prove the API level, both native lifecycles, exact candidate count,
 - Modify: `docs/superpowers/specs/2026-07-14-phase-1n-aac-lc-wire-contract-design.md`
 - Modify: `docs/superpowers/specs/2026-07-15-phase-1o-windows-media-foundation-aac-decoder-design.md`
 - Modify: `docs/superpowers/specs/2026-07-15-phase-1p-android-mediacodec-aac-encoder-design.md`
+- Modify: `docs/superpowers/plans/2026-07-15-phase-1p-android-mediacodec-aac-encoder.md`
 
 - [ ] **Step 1: Correct Android encoder status and behavior**
 
@@ -1989,12 +1990,29 @@ phase_p = Path(
 ).read_text()
 checks = {
     'standalone encoder boundary': 'standalone fixed-format' in android,
+    'pipeline explicitly future':
+        'Planned sender runtime-integration pipeline' in android,
     'no hardware guarantee': 'makes no hardware-acceleration guarantee' in android,
+    'fixed codec config': 'exposes no codec configuration' in android,
     'eos drain lifecycle': 'Drain Through Output EOS' in android,
     'buffered output': 'zero, one,\nor many complete raw AAC' in android,
     'packetization later': 'later runtime-integration\nphase' in android,
+    'runtime accepts transport candidates':
+        'candidates are accepted for transmission' in android,
+    'owner-thread wrapper': 'synchronous and owner-thread-only' in android,
+    'caller timestamps': 'accepts caller-owned input timestamps' in android,
+    'output timestamps stay diagnostic':
+        'output timestamps only for diagnostics' in android,
+    'queue policy future':
+        'queue policies below are future runtime-integration design' in android,
+    'actual encoder filename': 'MediaCodecAacEncoder.kt' in android,
     'future decoder drain': 'Decoder.Drain()' in audio,
+    'future decoder thread':
+        'thread and queue topology remains future runtime-integration' in audio,
     'api 29 gate': 'API 29 x86_64 emulator' in testing,
+    'observed codec evidence':
+        'Implementation run `29411299347` at `80818a2`' in testing,
+    'test scope truthful': 'Current CI claims only the implemented' in testing,
     'windows oracle': 'exactly 53,248' in testing,
     'roadmap in progress': 'Phase 1 in progress' in roadmap,
     'roadmap not complete': 'Version 1.0 尚未完成' in roadmap,
@@ -2003,11 +2021,19 @@ checks = {
     'phase p implemented': '**Status:** Implemented' in phase_p,
     'runtime owns fake replacement':
         'sender runtime-integration phase replaces' in phase_n,
+    'runtime accepts candidates for packetization':
+        'access unit accepted for transmission by the sender runtime' in phase_n,
+    'sender runtime still fake': 'There is no sender-runtime `MediaCodec`' in phase_p,
     'old hardware wording gone':
         "hardware-accelerated MediaCodec API" not in android,
     'old flush lifecycle gone': '\nFlush\n\n↓\n\nStop' not in android,
     'old no-buffer claim gone':
         'No additional buffering occurs inside the encoder' not in android,
+    'old timestamp rewrite gone':
+        'MediaCodec output timestamps should be replaced' not in android,
+    'old encoder filename gone': 'MediaCodecEncoder.kt' not in android,
+    'old auto-packetization gone':
+        'Put each subsequent complete encoded access unit' not in phase_n,
 }
 failed = [name for name, ok in checks.items() if not ok]
 if failed:
@@ -2026,7 +2052,8 @@ Expected: focused and global checks pass.
 git add docs/04-Android.md docs/06-Audio.md docs/10-Testing.md docs/11-Roadmap.md \
   docs/superpowers/specs/2026-07-14-phase-1n-aac-lc-wire-contract-design.md \
   docs/superpowers/specs/2026-07-15-phase-1o-windows-media-foundation-aac-decoder-design.md \
-  docs/superpowers/specs/2026-07-15-phase-1p-android-mediacodec-aac-encoder-design.md
+  docs/superpowers/specs/2026-07-15-phase-1p-android-mediacodec-aac-encoder-design.md \
+  docs/superpowers/plans/2026-07-15-phase-1p-android-mediacodec-aac-encoder.md
 git commit -m "docs: record Android MediaCodec interop"
 ```
 

@@ -1,6 +1,6 @@
 # Phase 1-P Android MediaCodec AAC Encoder Design
 
-**Status:** Draft for implementation
+**Status:** Implemented
 
 **Date:** 2026-07-15
 
@@ -49,7 +49,9 @@ FakeAacFrameBytes
 PacketWriter / Socket OutputStream
 ```
 
-There is no production `MediaCodec`, `AudioRecord`, playback-capture, foreground-service, PCM queue, AAC queue, or live pacing path. Phase 1-P must not make active docs claim otherwise.
+There is no sender-runtime `MediaCodec`, `AudioRecord`, playback-capture,
+foreground-service, PCM queue, AAC queue, or live pacing path. Phase 1-P must
+not make active docs claim otherwise.
 
 ---
 

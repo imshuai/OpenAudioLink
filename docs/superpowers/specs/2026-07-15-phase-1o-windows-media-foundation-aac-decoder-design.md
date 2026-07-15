@@ -1,6 +1,6 @@
 # Phase 1-O Windows Media Foundation AAC Decoder Design
 
-**Status:** Draft for implementation
+**Status:** Implemented
 
 **Date:** 2026-07-15
 

@@ -1008,9 +1008,15 @@ Encoding is isolated from audio capture and networking.
 
 The encoder receives PCM frames and produces encoded AAC frames.
 
+Phase 1-P proves this boundary in a standalone fixed-format
+MediaCodecAacEncoder. It is not connected to AudioRecord, queues, packetization,
+HandshakeClient, or the sender runtime; those remain later phases.
+
 ---
 
 # Encoding Pipeline
+
+Planned sender runtime-integration pipeline:
 
 ```text
 PCM Queue
@@ -1032,29 +1038,24 @@ Protocol Engine
 Transport
 ```
 
-The encoder is unaware of networking, protocol framing and session management.
+In that future pipeline, the encoder remains unaware of networking, protocol
+framing and session management.
 
 ---
 
 # Codec Technology
 
-Version 1 uses Android's hardware-accelerated MediaCodec API.
-
-Preferred MIME type:
-
-```
-audio/mp4a-latm
-```
-
-The implementation should always prefer hardware encoders when available.
-
-Software encoding should be used only as a fallback.
+Version 1 uses Android's platform MediaCodec API with MIME type
+`audio/mp4a-latm`. Phase 1-P accepts the default encoder selected by Android and
+makes no hardware-acceleration guarantee. Hardware preference, software
+fallback policy, and device coverage are later runtime and release decisions.
 
 ---
 
 # Encoder Configuration
 
-Recommended defaults.
+Phase 1-P fixes these values and exposes no codec configuration. The defaults
+and product settings below apply to later runtime integration.
 
 | Property | Value |
 |----------|------|
@@ -1066,13 +1067,13 @@ Recommended defaults.
 | Samples per channel per AAC frame | 1024 |
 | Nominal wire frame duration | 21 ms |
 
-Bitrate should be configurable by the user.
+User-configurable bitrate remains a future product setting.
 
 ---
 
 # Supported Bitrates
 
-Recommended presets.
+Future product presets:
 
 | Quality | Bitrate |
 |----------|---------:|
@@ -1105,11 +1106,15 @@ Start
 
 ↓
 
-Encode Frames
+Submit PCM / Collect Available Output
 
 ↓
 
-Flush
+Queue Input EOS
+
+↓
+
+Drain Through Output EOS
 
 ↓
 
@@ -1126,7 +1131,9 @@ MediaCodec instances should never be reused across streaming sessions.
 
 # Encoder Thread
 
-The encoder runs independently.
+This section describes future runtime integration. The Phase 1-P wrapper is
+synchronous and owner-thread-only; it does not choose a dispatcher or own PCM
+or AAC queues.
 
 Recommended dispatcher:
 
@@ -1173,26 +1180,38 @@ exact 21.333333... ms
 Stereo, 48000 Hz, 16-bit PCM
 ```
 
-Input timestamps should originate from the Audio Capture Engine.
+Phase 1-P accepts caller-owned input timestamps. A later runtime-integration
+phase supplies them from the Audio Capture Engine.
 
 ---
 
 # MediaCodec Output
 
-Output consists of AAC access units.
+MediaCodec output may be buffered or fragmented. One submit can make zero, one,
+or many complete raw AAC access units available. Codec-config output is
+validated as `AudioSpecificConfig = 11 90` and never exposed as audio. Partial
+buffers are assembled before an access unit is returned, and delayed output is
+collected by draining through output EOS.
 
-Each access unit is immediately wrapped into an AUDIO packet.
+Android permits one audio output buffer to batch multiple access units without
+exposing their internal boundaries. Version 1 rejects that behavior: for any
+submitted input count `N >= 0`, a complete encode-and-drain cycle must produce
+exactly `N + 1` candidates. The extra candidate is retained only as codec-added
+priming/padding, without inferred audio-content or clock semantics. This is a
+compatibility gate for the selected codec, not a general MediaCodec guarantee.
 
-Each transmitted access unit is one complete raw AAC-LC frame. ADTS headers,
-LATM/LOAS framing, container bytes, and `BUFFER_FLAG_CODEC_CONFIG` output are
-not sent as `AUDIO.EncodedData`. Before sending audio, the sender validates
-that the codec-specific output `csd-0` equals `11 90`.
-
-No additional buffering occurs inside the encoder.
+Phase 1-P returns raw access units to its caller. A later runtime-integration
+phase decides which candidates are accepted for transmission, assigns their
+wire metadata, and puts exactly one accepted raw access unit in each `AUDIO`
+packet. Production output has no ADTS, LATM/LOAS, container, or codec-config
+bytes.
 
 ---
 
 # Encoder Queue
+
+The queue policies below are future runtime-integration design and are not
+implemented by Phase 1-P.
 
 AAC output is stored in a queue before protocol serialization.
 
@@ -1278,18 +1297,24 @@ AAC Frame
 Protocol Packet
 ```
 
-MediaCodec output timestamps should be replaced with the original capture timestamp if necessary.
+Phase 1-P records MediaCodec output timestamps only for diagnostics and does not
+rewrite or equate them to input timestamps. A later runtime-integration phase
+assigns the capture-derived wire timestamp independently.
 
 ---
 
 # Encoder Errors
 
-Recoverable:
+Phase 1-P does not retry internally. A timeout, codec-config mismatch, or codec
+state failure faults the wrapper; the owner remains responsible for closing it.
+Retry and SessionManager policy belong to later runtime integration.
+
+Future runtime-recoverable conditions:
 
 - Temporary MediaCodec timeout
 - Output buffer unavailable
 
-Behavior:
+Future runtime behavior:
 
 ```
 Retry
@@ -1301,7 +1326,7 @@ Fatal:
 - Unsupported profile
 - Illegal MediaCodec state
 
-Behavior:
+Future runtime behavior:
 
 ```text
 Release Codec
@@ -2792,7 +2817,7 @@ src/main/java/com/openaudiolink/
 │
 ├── codec/
 │   ├── AudioEncoder.kt
-│   ├── MediaCodecEncoder.kt
+│   ├── MediaCodecAacEncoder.kt
 │   └── EncoderConfiguration.kt
 │
 ├── protocol/

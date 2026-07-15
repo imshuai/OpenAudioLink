@@ -549,7 +549,9 @@ Required cases:
 
 # Android Sender Tests
 
-Android tests verify capture, encoding, transport and UI orchestration.
+The Android test strategy covers capture, encoding, transport and UI
+orchestration as those phases land. Current CI claims only the implemented
+boundaries described below.
 
 ---
 
@@ -595,11 +597,43 @@ Recommended cases:
 - MediaProjection permission workflow
 - Foreground service notification visibility
 - AudioRecord creation with playback capture configuration
-- MediaCodec AAC encoder availability
+- MediaCodec AAC-LC encode, config, EOS/drain and repeated lifecycle on the
+  fixed API 29 x86_64 emulator
 - Network monitoring callbacks
 - Process recreation during inactive state
 
 Some cases may require manual approval during test execution.
+
+---
+
+## Phase 1-P MediaCodec Gate
+
+GitHub Android CI runs the standalone `MediaCodecAacEncoder` on an API 29
+x86_64 emulator. The test submits deterministic 48 kHz stereo PCM16 frames with
+sample-derived timestamps, requires exact `AudioSpecificConfig = 11 90`, drains
+through output EOS, repeats create/encode/drain/close, and rejects state,
+thread, size and timestamp misuse. Each twelve-frame run must produce exactly
+thirteen candidates: one retained codec-added priming/padding candidate beyond
+the input count. Implementation run `29411299347` at `80818a2` selected
+`OMX.google.aac.encoder`. The implementation name and platform output
+timestamps are diagnostic only: the gate does not equate output and input
+timestamps or require hardware acceleration or a particular codec
+implementation.
+
+For any input count `N >= 0`, the selected codec fails for batching, loss, or
+any count other than `N + 1`. Test code assembles thirteen candidates and adds
+ADTS headers only to preserve the proven boundaries in an ephemeral CI
+artifact. The codec-added priming/padding candidate is retained without
+inferred audio-content or clock semantics. A dependent `windows-2022` x64 job
+removes those headers, decodes every candidate independently to exactly 4096
+PCM bytes, then decodes all thirteen through `MediaFoundationAacDecoder`. The
+continuous oracle is exactly 53,248 PCM bytes with non-zero energy in both
+channels, not an AAC or PCM hash.
+
+This proves standalone Android-to-Windows codec compatibility only. It does not
+prove MediaProjection, AudioRecord, queues, sender/receiver runtime integration,
+hardware encoding, OEM compatibility, audible playback, latency, power, or
+endurance.
 
 ---
 

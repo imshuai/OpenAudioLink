@@ -729,7 +729,9 @@ Bits:
 
 # Decoder Thread
 
-The decoder runs independently.
+This thread and queue topology remains future runtime-integration design. The
+Phase 1-O wrapper is owner-thread-only and does not create a decoder thread or
+own AAC/PCM queues.
 
 Pipeline:
 
@@ -763,13 +765,19 @@ while running:
 
     frame = AACQueue.Take()
 
-    pcm = Decode(frame)
+    for each pcm chunk in Decoder.Submit(frame):
 
-    if pcm available:
+        PCMQueue.Push(chunk)
 
-        PCMQueue.Push(pcm)
+on end of stream:
 
+    for each delayed pcm chunk in Decoder.Drain():
+
+        PCMQueue.Push(chunk)
 ```
+
+This remains future runtime-integration pseudocode. Submit may return zero, one,
+or many chunks; Drain is required before shutdown.
 
 The decoder must block efficiently when no data exists.
 

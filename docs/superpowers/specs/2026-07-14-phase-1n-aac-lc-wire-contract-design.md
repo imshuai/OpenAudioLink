@@ -1,6 +1,6 @@
 # Phase 1-N AAC-LC Wire Contract Design
 
-**Status:** Draft for implementation
+**Status:** Implemented
 
 **Date:** 2026-07-14
 
@@ -109,13 +109,16 @@ The value is derived from the fixed Version 1 profile, sample rate and channel c
 
 ### Android MediaCodec behavior
 
-The future Android encoder must:
+The Android encoder boundary and later sender runtime integration must:
 
 1. Configure AAC-LC, 48 kHz and stereo.
 2. Read the codec-specific output (`csd-0` / `BUFFER_FLAG_CODEC_CONFIG`).
 3. Require `AudioSpecificConfig = 11 90`.
 4. Never wrap that codec-config buffer in an `AUDIO` packet.
-5. Put each subsequent complete encoded access unit into one `AUDIO` packet.
+5. For each access unit accepted for transmission by the sender runtime, assign
+   wire metadata and put exactly that one raw access unit into one `AUDIO`
+   packet. A codec output candidate is not automatically transmit-ready; the
+   codec-added candidate policy belongs to later runtime integration.
 
 If the codec reports a different profile, sample rate, channel configuration or frame model, the stream must fail before transmitting audio.
 
@@ -314,7 +317,7 @@ PING common-header timestamp = 123498672 us
 STOP_STREAM common-header timestamp = 123498673 us
 ```
 
-The three fake frame timestamps are the first three values from the accumulated formula above. The next theoretical frame delta would be `+21333`, completing the repeating three-delta pattern; the fake runtime remains at three packets. Advancing the following PING and STOP_STREAM timestamps keeps the sender's common-header clock monotonic. The Android MediaCodec phase later replaces the embedded development frame with live encoded output.
+The three fake frame timestamps are the first three values from the accumulated formula above. The next theoretical frame delta would be `+21333`, completing the repeating three-delta pattern; the fake runtime remains at three packets. Advancing the following PING and STOP_STREAM timestamps keeps the sender's common-header clock monotonic. A later sender runtime-integration phase replaces the embedded development frame with live encoded output.
 
 ---
 

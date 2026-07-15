@@ -26,14 +26,15 @@ Roadmap 不是承诺清单。
 | Area | Status |
 |------|--------|
 | Product direction | Defined |
-| Architecture documents | Drafted |
-| Protocol specification | Draft |
-| Android Sender | Planned |
-| Windows Receiver | Planned |
-| Testing strategy | Drafted |
+| Architecture documents | Active |
+| Protocol specification | Version 1 implemented and tested |
+| Android Sender | Phase 1 in progress; fake transport and standalone AAC encoder |
+| Windows Receiver | Phase 1 in progress; fake runtime and standalone AAC decoder |
+| Testing strategy | Active in CI |
 | Public release | Not started |
 
-当前重点是先稳定规格，再实现最小可用版本。
+Phase 0 已完成。当前重点是逐步把 Phase 1 的 standalone 组件接入真实采集、
+传输、解码和播放主链路；Version 1.0 尚未完成。
 
 ---
 
