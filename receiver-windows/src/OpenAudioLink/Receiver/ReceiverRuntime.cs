@@ -143,8 +143,7 @@ namespace OpenAudioLink.Receiver
                         PacketParser.ReadUInt32(queuedPayload, 9);
                     ushort duration = (ushort)((queuedPayload[13] << 8) | queuedPayload[14]);
                     uint encodedSize = PacketParser.ReadUInt32(queuedPayload, 15);
-                    if ((uint)(queuedPayload.Length - ProtocolConstants.AudioPayloadHeaderSize) != encodedSize ||
-                        encodedSize > int.MaxValue)
+                    if ((uint)(queuedPayload.Length - ProtocolConstants.AudioPayloadHeaderSize) != encodedSize)
                     {
                         Fault("Invalid audio payload length.");
                     }
