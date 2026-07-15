@@ -72,6 +72,14 @@ namespace OpenAudioLink.Tests.Protocol
         }
 
         [TestMethod]
+        public void ValidateAacPayload_EmptyEncodedData_Throws()
+        {
+            byte[] payload = HandshakePayloads.Audio(ProtocolConstants.CodecAacLc, 1u, 2UL, 21, new byte[0]);
+
+            Assert.ThrowsException<PacketParseException>(() => AudioPayloadValidator.ValidateAacPayload(payload));
+        }
+
+        [TestMethod]
         public void ValidateAacPayload_UnsupportedCodec_Throws()
         {
             byte[] payload = ValidAudioPayload();
