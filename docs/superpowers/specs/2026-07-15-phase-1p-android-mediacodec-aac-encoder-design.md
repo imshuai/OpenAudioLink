@@ -96,12 +96,16 @@ that buffer. Version 1 cannot safely packetize such output without a raw AAC
 parser.
 
 Phase 1-P therefore defines a strict compatibility gate rather than assuming
-all codecs behave alike. After twelve exact PCM input frames and output EOS,
-the selected codec must have produced exactly twelve complete non-config
-output buffers. Each returned buffer must also decode independently on Windows
-to exactly one 1024-sample stereo PCM frame. Any codec that batches, drops, or
-adds access units is unsupported and fails the phase instead of being
-mispacketized.
+all codecs behave alike. Exact-head API 29 run `29392806222` selected
+`OMX.google.aac.encoder` and observed one input frame producing two completed
+candidates and twelve input frames producing thirteen. For that selected codec,
+zero input requires zero candidates and non-empty `N` input frames require
+`N + 1` completed non-config candidates. The extra candidate is called only a
+codec-added priming/padding candidate: it is retained, and this phase infers no
+audio-content or clock semantics from it. Each returned candidate must decode
+independently on Windows to exactly one 1024-sample stereo PCM frame. Batching,
+loss, or any count other than `N + 1` for non-empty input fails the selected
+codec; this is not an Android-wide guarantee.
 
 This restriction proves only the API 29 emulator codec selected in CI. The
 standalone wrapper is not connected to the sender runtime, and later device
@@ -155,9 +159,11 @@ necessary.
 - Caller-owned presentation timestamps.
 - Exact `AudioSpecificConfig = 11 90` validation.
 - Zero, one, or many output access units per `submit`.
-- Exactly one completed output buffer per submitted PCM frame across a full
-  encode-and-drain cycle; batching, loss, or added output is a compatibility
-  failure.
+- Across a full encode-and-drain cycle, zero submitted PCM frames produce zero
+  candidates and non-empty `N` submitted frames produce `N + 1` candidates;
+  the codec-added priming/padding candidate is retained without semantic
+  interpretation, while batching, loss, or any other count is a compatibility
+  failure for the selected codec.
 - Explicit input EOS and output drain.
 - Owner-thread, state, timeout, and deterministic cleanup behavior.
 - JVM tests for the exact codec-config validator.
@@ -425,10 +431,13 @@ unfinished faults the encoder. An empty EOS buffer is never returned as audio.
 The wrapper does not add ADTS, LATM/LOAS framing, container bytes, or protocol fields.
 
 The wrapper counts successfully queued PCM frames and completed output
-candidates. Drain faults unless the counts are equal. Because some candidates
-may already have been returned by earlier `submit` calls, this late full-cycle
-check is sufficient only for the standalone proof; runtime packetization stays
-out of scope until the codec has passed the same device gate.
+candidates. Drain faults unless the expected count is zero for zero input or
+`submittedFrameCount + 1` for non-empty input. The extra candidate is retained
+as a codec-added priming/padding candidate without audio-content or clock
+semantics. Because some candidates may already have been returned by earlier
+`submit` calls, this late full-cycle check is sufficient only for the standalone
+proof; runtime packetization stays out of scope until the codec has passed the
+same device gate.
 
 ---
 
@@ -440,7 +449,8 @@ The first `drain`:
 2. Queues a zero-length input with `BUFFER_FLAG_END_OF_STREAM`.
 3. Continues dequeuing output until an output buffer carries EOS.
 4. Returns all delayed non-config access units.
-5. Requires completed output-candidate count to equal queued PCM-frame count.
+5. Requires zero candidates for zero queued PCM frames, or `N + 1` completed
+   candidates for non-empty `N` queued frames.
 6. Enters `Drained`.
 
 The zero-length EOS input uses timestamp `0`. That timestamp has no media or
@@ -508,8 +518,10 @@ The success path:
 3. Computes canonical rational presentation timestamps.
 4. Submits all twelve frames without assuming immediate output.
 5. Calls `drain` and appends delayed output.
-6. Requires exactly twelve non-empty completed output candidates. This is the
-   Version 1 compatibility gate, not a general Android scheduling guarantee.
+6. Requires exactly thirteen non-empty completed output candidates: twelve
+   input frames plus one retained codec-added priming/padding candidate. This
+   is the Version 1 gate for the selected codec, not a general Android
+   scheduling guarantee.
 7. Records the access-unit count and platform output timestamps without
    requiring output timestamps to equal input timestamps.
 8. Calls idempotent second `drain` and `close`.
@@ -518,6 +530,7 @@ The success path:
 
 Focused native tests also prove:
 
+- zero-input drain returns zero candidates;
 - wrong PCM length rejection;
 - negative and non-increasing input timestamp rejection;
 - submit after drain;
@@ -532,7 +545,7 @@ Tests log `codecName`, but do not assert hardware acceleration or a specific imp
 ## Test-Only ADTS Artifact
 
 Production output stays raw. Instrumentation code adds one seven-byte CRC-free
-ADTS header per returned candidate only to carry the twelve proven boundaries
+ADTS header per returned candidate only to carry the thirteen proven boundaries
 between CI jobs.
 
 Every generated header encodes:
@@ -566,25 +579,25 @@ One MSTest method is active only when the interop environment flag is set. In th
 
 1. Requires the artifact path and file.
 2. Parses strict CRC-free AAC-LC/48 kHz/stereo ADTS boundaries.
-3. Requires exactly twelve frames and removes every seven-byte header.
+3. Requires exactly thirteen frames and removes every seven-byte header.
 4. Decodes each unchanged candidate with a fresh
    `MediaFoundationAacDecoder` and requires exactly 4096 PCM bytes, proving the
    selected codec did not batch multiple decodable AUs into that buffer.
-5. Submits all twelve unchanged raw access units to one decoder and drains
+5. Submits all thirteen unchanged raw access units to one decoder and drains
    delayed output.
 6. Requires continuous total PCM bytes to equal:
 
 ```text
-12 access units * 1024 * 2 channels * 2 bytes = 49,152 bytes
+13 access units * 1024 * 2 channels * 2 bytes = 53,248 bytes
 ```
 
 7. Requires non-zero signed PCM16 energy independently in both channels.
 
 The job runs in an x64 testhost. Existing Phase 1-O CI already proves the decoder ABI independently in x86 and x64; duplicating both architectures in this artifact-transfer job adds no codec-contract evidence.
 
-No AAC or PCM byte hash is asserted. The exact frame count is a deliberate
-compatibility restriction for the selected codec, not a claim that Android
-requires all AAC encoders to schedule one output per input.
+No AAC or PCM byte hash is asserted. The exact `N + 1` relation for non-empty
+input is a compatibility restriction for the selected codec, not a claim that
+Android requires all AAC encoders to schedule this way.
 
 ---
 
@@ -711,8 +724,8 @@ The implementation follows RED to GREEN in this order:
 3. Add native encoder contract tests and observe the missing class failure on exact-head CI.
 4. Implement the minimum encoder and return native CI to green.
 5. Add artifact export and Windows interop RED test.
-6. Connect the dependent CI job and require twelve independently decodable
-   one-frame candidates plus the continuous 49,152-byte decode.
+6. Connect the dependent CI job and require thirteen independently decodable
+   one-frame candidates plus the continuous 53,248-byte decode.
 7. Align active docs and spec statuses.
 
 Each task receives specification review followed by code-quality review. Critical and Important findings are fixed and re-reviewed before advancing.
@@ -733,15 +746,17 @@ Phase 1-P is complete when:
 - Drain queues input EOS, reads through output EOS, and returns delayed access units.
 - State, thread, timeout, fault, and cleanup behavior follow this design.
 - The API 29 emulator submits twelve deterministic frames twice in one process.
-- Each run drains through output EOS, produces exactly twelve completed output
-  candidates, and records their platform timestamps; this strict compatibility
-  gate rejects batching/loss/addition without claiming a general Android
-  one-in/one-out guarantee.
+- Each run drains through output EOS, produces exactly thirteen completed output
+  candidates for twelve submitted frames, and records their platform timestamps
+  without equating them to input timestamps. This strict selected-codec gate
+  retains one codec-added priming/padding candidate and rejects batching, loss,
+  or any count other than non-empty `N + 1` without claiming a general Android
+  guarantee.
 - The test-only ADTS artifact contains the exact returned raw bytes and valid frame boundaries.
-- The dependent Windows x64 job independently decodes every candidate to
-  exactly 4096 PCM bytes, then continuously decodes all twelve with the
+- The dependent Windows x64 job independently decodes all thirteen candidates
+  to exactly 4096 PCM bytes, then continuously decodes all thirteen with the
   existing Media Foundation decoder.
-- Continuous Windows output is exactly 49,152 bytes with non-zero energy in both channels.
+- Continuous Windows output is exactly 53,248 bytes with non-zero energy in both channels.
 - JVM, emulator, interop, existing Windows matrix, docs, fixture, protocol, and Android regression gates pass on the exact phase-branch HEAD.
 - Active docs describe only the standalone proof, preserve buffered submit/drain semantics, and make no capture, runtime, hardware, audible-playback, latency, or device-support claim.
 - No fake sender, Android UI, protocol production, network, capture, service, renderer, or checked-in audio fixture changes occur.

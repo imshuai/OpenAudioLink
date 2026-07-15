@@ -4,7 +4,7 @@
 
 **Goal:** Prove on exact-head CI that a fixed Android `MediaCodec` AAC-LC encoder emits canonical raw access units which the existing Windows Media Foundation decoder consumes, without connecting either codec to the fake runtimes.
 
-**Architecture:** Add one synchronous owner-thread `MediaCodecAacEncoder` with fixed Version 1 media attributes, exact `11 90` codec-config validation, partial-output assembly, explicit EOS drain, and deterministic cleanup. Because API 29 may batch audio access units without exposing internal boundaries, the selected codec must pass a strict twelve-input/twelve-output compatibility gate and every candidate must decode independently to one PCM frame on Windows. An API 29 x86_64 emulator exports the twelve candidates in a test-only ADTS artifact; a dependent `windows-2022` job strips those headers and verifies both independent and continuous decode.
+**Architecture:** Add one synchronous owner-thread `MediaCodecAacEncoder` with fixed Version 1 media attributes, exact `11 90` codec-config validation, partial-output assembly, explicit EOS drain, and deterministic cleanup. API 29 run `29392806222` observed selected `OMX.google.aac.encoder` produce two candidates for one input and thirteen for twelve inputs. The selected-codec gate is therefore zero-input/zero-output and non-empty `N` inputs/`N + 1` candidates, retaining one codec-added priming/padding candidate without audio-content or clock semantics. Every one of the thirteen candidates must decode independently to one PCM frame on Windows. An API 29 x86_64 emulator exports the thirteen boundaries in a test-only ADTS artifact; a dependent `windows-2022` job strips those headers and verifies both independent and continuous decode.
 
 **Tech Stack:** Kotlin 2.0.21, Android API 29/35, `android.media.MediaCodec`, AndroidX Test/JUnit 4, Gradle 8.7/AGP 8.5.2, GitHub Actions, C#/.NET Framework 4.8, MSTest, Markdown.
 
@@ -21,12 +21,14 @@ In scope:
 - Exact 4096-byte PCM input frames and caller-owned monotonic timestamps.
 - Exact `AudioSpecificConfig = 11 90` validation from either native representation.
 - Synchronous submit/output/drain, partial-frame assembly, state, owner-thread, timeout, and cleanup behavior.
-- Full-cycle equality between queued PCM frames and completed output candidates;
-  batched, missing, or added output is unsupported.
+- Full-cycle zero-input/zero-output and non-empty `N`-input/`N + 1`-candidate
+  relation; the retained codec-added priming/padding candidate has no inferred
+  audio-content or clock semantics, while batched, missing, or other-count
+  output fails the selected codec.
 - API 29 emulator instrumentation and repeated native lifecycle proof.
 - Ephemeral test-only ADTS export.
 - Independent one-frame and continuous Windows Media Foundation decode of the
-  same twelve generated raw candidates.
+  same thirteen generated raw candidates.
 - Android workflow unit, emulator, and Windows interop jobs.
 - Focused active-doc and completed-spec status corrections.
 
@@ -472,8 +474,15 @@ class MediaCodecAacEncoderTest {
         val first = encodeOnce()
         val second = encodeOnce()
 
-        assertEquals(INPUT_FRAME_COUNT, first.size)
-        assertEquals(INPUT_FRAME_COUNT, second.size)
+        assertEquals(EXPECTED_OUTPUT_CANDIDATE_COUNT, first.size)
+        assertEquals(EXPECTED_OUTPUT_CANDIDATE_COUNT, second.size)
+    }
+
+    @Test
+    fun emptyInputDrainsToNoCandidates() {
+        MediaCodecAacEncoder().use { encoder ->
+            assertTrue(encoder.drain().isEmpty())
+        }
     }
 
     @Test
@@ -552,7 +561,7 @@ class MediaCodecAacEncoderTest {
             assertTrue(encoder.drain().isEmpty())
         }
 
-        assertEquals(INPUT_FRAME_COUNT, output.size)
+        assertEquals(EXPECTED_OUTPUT_CANDIDATE_COUNT, output.size)
         output.forEach { unit ->
             assertTrue(unit.bytes.isNotEmpty())
             assertTrue(unit.bytes.size <= MAX_ACCESS_UNIT_BYTES)
@@ -608,6 +617,9 @@ class MediaCodecAacEncoderTest {
         const val SAMPLE_RATE = 48_000.0
         const val SAMPLES_PER_FRAME = 1024
         const val INPUT_FRAME_COUNT = 12
+        const val CODEC_ADDED_CANDIDATE_COUNT = 1
+        const val EXPECTED_OUTPUT_CANDIDATE_COUNT =
+            INPUT_FRAME_COUNT + CODEC_ADDED_CANDIDATE_COUNT
         const val PCM_BYTES_PER_FRAME = 4096
         const val BYTES_PER_STEREO_SAMPLE = 4
         const val MAX_ACCESS_UNIT_BYTES = 65_536
@@ -618,11 +630,14 @@ class MediaCodecAacEncoderTest {
 }
 ```
 
-Exact output count is a deliberate Version 1 compatibility gate, not an Android
-scheduling guarantee. API 29 permits batched audio AUs without exposing their
-internal boundaries; a selected codec that does not produce twelve candidates
-for twelve submitted frames is rejected. Output PTS remains diagnostic and is
-not required to equal input PTS.
+Exact output count is a deliberate Version 1 compatibility gate for the
+selected codec, not an Android scheduling guarantee. Live API 29 evidence from
+run `29392806222` observed `OMX.google.aac.encoder` produce two candidates for
+one input and thirteen for twelve inputs. Zero input requires zero candidates;
+non-empty `N` input frames require `N + 1`, retaining the codec-added
+priming/padding candidate without audio-content or clock semantics. Batching,
+loss, or any other count fails. Output PTS remains diagnostic and is not
+required to equal input PTS.
 
 - [ ] **Step 2: Compile locally and confirm the intended RED**
 
@@ -838,10 +853,19 @@ class MediaCodecAacEncoder : Closeable {
             if (partialOutput.isNotEmpty()) {
                 throw IllegalStateException("MediaCodec ended with a partial access unit.")
             }
-            if (completedCandidateCount != submittedFrameCount) {
+            val expectedCandidateCount = if (submittedFrameCount == 0) {
+                0
+            } else {
+                Math.addExact(
+                    submittedFrameCount,
+                    CODEC_ADDED_CANDIDATE_COUNT,
+                )
+            }
+            if (completedCandidateCount != expectedCandidateCount) {
                 throw IllegalStateException(
                     "MediaCodec produced $completedCandidateCount output candidates " +
-                        "for $submittedFrameCount input frames.",
+                        "for $submittedFrameCount input frames; expected " +
+                        "$expectedCandidateCount.",
                 )
             }
             state = State.Drained
@@ -1097,6 +1121,7 @@ class MediaCodecAacEncoder : Closeable {
         const val CHANNEL_COUNT = 2
         const val BIT_RATE = 192_000
         const val PCM_BYTES_PER_FRAME = 4096
+        const val CODEC_ADDED_CANDIDATE_COUNT = 1
         const val MAX_ACCESS_UNIT_BYTES = 65_536
         const val CANONICAL_CONFIG_BYTES = 2
         const val DEQUEUE_TIMEOUT_US = 10_000L
@@ -1153,9 +1178,11 @@ class MediaCodecAacEncoder : Closeable {
 }
 ```
 
-Do not add output PTS rewriting. Full-cycle input/output count equality is a
-strict Version 1 compatibility gate for the selected codec, not an Android
-scheduling guarantee. `KEY_MAX_INPUT_SIZE` remains intentionally absent.
+Do not add output PTS rewriting. The full-cycle gate requires zero candidates
+for zero input and `N + 1` candidates for non-empty `N` input, retaining the
+codec-added priming/padding candidate without semantic inference. It is a
+strict Version 1 gate for the selected codec, not an Android scheduling
+guarantee. `KEY_MAX_INPUT_SIZE` remains intentionally absent.
 
 - [ ] **Step 2: Run every locally available GREEN gate**
 
@@ -1185,12 +1212,12 @@ git commit -m "feat: encode AAC with Android MediaCodec"
 
 Push exact HEAD and watch the Android run. Require `unit` and `media-codec`
 success. Inspect instrumentation logs for two codec names, two successful
-lifecycle runs, exact `12 AU(s)` for each run, and each platform output
+lifecycle runs, exact `13 AU(s)` for each run, and each platform output
 timestamp list.
 
 If native CI fails, invoke `superpowers:systematic-debugging`. Change only one
 observed MediaCodec assumption at a time. Do not weaken exact `11 90`, the
-twelve-candidate boundary gate, raw-AU, EOS, owner-thread, or cleanup
+non-empty `N + 1` candidate boundary gate, raw-AU, EOS, owner-thread, or cleanup
 requirements. If the platform demonstrates behavior contradicting the design,
 update the design with evidence before changing the contract.
 
@@ -1211,6 +1238,9 @@ private const string MediaCodecInteropEnabled =
 private const string MediaCodecInteropPath =
     "OAL_MEDIACODEC_ADTS_PATH";
 private const int MediaCodecInputFrameCount = 12;
+private const int MediaCodecAddedCandidateCount = 1;
+private const int MediaCodecExpectedOutputCandidateCount =
+    MediaCodecInputFrameCount + MediaCodecAddedCandidateCount;
 ```
 
 Add this test after `CanonicalFixtureDecodesTwiceToCompleteStereoPcm`:
@@ -1232,7 +1262,7 @@ public void AndroidMediaCodecArtifactDecodesToCompleteStereoPcm()
 
     IReadOnlyList<byte[]> frames = SplitAdts(
         File.ReadAllBytes(path),
-        MediaCodecInputFrameCount);
+        MediaCodecExpectedOutputCandidateCount);
     RunMta(() =>
     {
         foreach (byte[] frame in frames)
@@ -1243,7 +1273,9 @@ public void AndroidMediaCodecArtifactDecodesToCompleteStereoPcm()
                 "MediaCodec output candidate is not exactly one AAC access unit");
         }
         byte[] pcm = DecodeFrames(frames);
-        AssertPcm(pcm, checked(frames.Count * 4096));
+        AssertPcm(
+            pcm,
+            checked(MediaCodecExpectedOutputCandidateCount * 4096));
         Console.WriteLine(
             "MediaCodec interop decoded " + frames.Count + " access units to "
             + pcm.Length + " PCM bytes.");
@@ -1398,9 +1430,12 @@ private static IReadOnlyList<byte[]> SplitAdts(
 ```
 
 Existing splitter tests continue to prove the six-frame canonical fixture. The
-interop gate deliberately requires twelve candidates, independently decodes
-each to exactly 4096 bytes, and then verifies the continuous 49,152-byte decode.
-This rejects the selected codec if it batches, loses, or adds access units.
+interop gate deliberately requires twelve input frames plus one codec-added
+priming/padding candidate: thirteen boundaries. It independently decodes each
+candidate to exactly 4096 bytes, then verifies the continuous 53,248-byte
+decode. The selected codec fails for batching, loss, or any count other than
+non-empty `N + 1`; the extra candidate is retained without audio-content or
+clock semantics.
 
 - [ ] **Step 2: Add artifact extraction and the dependent Windows job**
 
@@ -1672,8 +1707,8 @@ trap 'rm -f "$LOG_FILE"' EXIT
 gh run view "$RUN_ID" --repo imshuai/OpenAudioLink --log > "$LOG_FILE"
 grep -F 'Android API level: 29' "$LOG_FILE"
 test "$(grep -cF 'AAC encoder:' "$LOG_FILE")" -ge 2
-test "$(grep -cF 'AAC output: 12 AU(s)' "$LOG_FILE")" -ge 2
-grep -F 'MediaCodec interop decoded 12 access units to 49152 PCM bytes.' "$LOG_FILE"
+test "$(grep -cF 'AAC output: 13 AU(s)' "$LOG_FILE")" -ge 2
+grep -F 'MediaCodec interop decoded 13 access units to 53248 PCM bytes.' "$LOG_FILE"
 grep -F 'Passed!' "$LOG_FILE"
 ```
 
@@ -1687,7 +1722,7 @@ windows-interop  completed success
 
 The separate assertions prevent an unrelated success line from satisfying the
 gate. They prove the API level, both native lifecycles, exact candidate count,
-49,152-byte Windows decode, and successful x64 test run.
+53,248-byte Windows decode, and successful x64 test run.
 
 ---
 ### Task 8: Align active codec, testing, and roadmap documentation
@@ -1765,9 +1800,11 @@ collected by draining through output EOS.
 
 Android permits one audio output buffer to batch multiple access units without
 exposing their internal boundaries. Version 1 rejects that behavior: a complete
-encode-and-drain cycle must produce exactly one completed candidate for every
-submitted 1024-sample PCM frame. This is a compatibility gate for qualified
-codecs, not a general MediaCodec guarantee.
+encode-and-drain cycle must produce zero candidates for zero input and `N + 1`
+candidates for non-empty `N` submitted 1024-sample PCM frames. The extra
+candidate is retained only as codec-added priming/padding, without inferred
+audio-content or clock semantics. This is a compatibility gate for the selected
+codec, not a general MediaCodec guarantee.
 
 Phase 1-P returns raw access units to its caller. A later runtime-integration
 phase assigns wire frame metadata and wraps each complete access unit in one
@@ -1823,17 +1860,20 @@ x86_64 emulator. The test submits deterministic 48 kHz stereo PCM16 frames with
 sample-derived timestamps, requires exact `AudioSpecificConfig = 11 90`, drains
 through output EOS, repeats create/encode/drain/close, and rejects state,
 thread, size and timestamp misuse. Each twelve-frame run must produce exactly
-twelve candidates. The test records the selected codec name and platform output
-timestamps, but does not require hardware acceleration or a particular
-implementation.
+thirteen candidates: one retained codec-added priming/padding candidate beyond
+the input count. The test records the selected codec name and platform output
+timestamps without equating them to input timestamps, but does not require
+hardware acceleration or a particular implementation.
 
-The encoder may buffer input and fragment output, but codecs that batch, lose,
-or add access units fail this gate. Test code assembles twelve candidates and
-adds ADTS headers only to preserve the proven boundaries in an ephemeral CI
-artifact. A dependent `windows-2022` x64 job removes those headers, decodes each
-candidate independently to exactly 4096 PCM bytes, then decodes all twelve
-through `MediaFoundationAacDecoder`. The continuous oracle is exactly 49,152
-PCM bytes with non-zero energy in both channels, not an AAC or PCM hash.
+The encoder may buffer input and fragment output, but the selected codec fails
+for batching, loss, or a non-empty count other than `N + 1`. Test code assembles
+thirteen candidates and adds ADTS headers only to preserve the proven boundaries
+in an ephemeral CI artifact. The codec-added priming/padding candidate is
+retained without inferred audio-content or clock semantics. A dependent
+`windows-2022` x64 job removes those headers, decodes every candidate
+independently to exactly 4096 PCM bytes, then decodes all thirteen through
+`MediaFoundationAacDecoder`. The continuous oracle is exactly 53,248 PCM bytes
+with non-zero energy in both channels, not an AAC or PCM hash.
 
 This proves standalone Android-to-Windows codec compatibility only. It does not
 prove MediaProjection, AudioRecord, queues, sender/receiver runtime integration,
@@ -1925,7 +1965,7 @@ checks = {
     'packetization later': 'later runtime-integration\nphase' in android,
     'future decoder drain': 'Decoder.Drain()' in audio,
     'api 29 gate': 'API 29 x86_64 emulator' in testing,
-    'windows oracle': 'exactly 49,152' in testing,
+    'windows oracle': 'exactly 53,248' in testing,
     'roadmap in progress': 'Phase 1 in progress' in roadmap,
     'roadmap not complete': 'Version 1.0 尚未完成' in roadmap,
     'phase n implemented': '**Status:** Implemented' in phase_n,
@@ -2066,10 +2106,10 @@ all successful. Inspect logs and require:
 
 - API property assertion equals `29`.
 - instrumentation suite executes without skipped codec tests.
-- two codec names/lifecycle runs and exact `12 AU(s)`/platform PTS lists are logged.
+- two codec names/lifecycle runs and exact `13 AU(s)`/platform PTS lists are logged.
 - artifact extraction and upload succeed.
 - Windows independently decodes every candidate to 4096 bytes and the log
-  prints `12 access units` and exactly `49152 PCM bytes`.
+  prints `13 access units` and exactly `53248 PCM bytes`.
 - Windows interop testhost is x64.
 
 Do not treat workflow or matrix labels as runtime proof.
@@ -2091,7 +2131,8 @@ First review full specification compliance. Only after approval, review code qua
 - actual PCM16 input-format confirmation;
 - codec-config validation before output;
 - partial-frame assembly and pre-allocation memory bound;
-- twelve-input/twelve-candidate batching/loss rejection;
+- zero-input/zero-candidate and non-empty `N`-input/`N + 1`-candidate
+  batching/loss/other-count rejection;
 - EOS-with-data ordering and drain deadline;
 - constructor/close cleanup;
 - emulator artifact provenance;

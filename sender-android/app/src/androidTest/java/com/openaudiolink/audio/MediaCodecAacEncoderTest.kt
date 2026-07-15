@@ -26,8 +26,15 @@ class MediaCodecAacEncoderTest {
         val first = encodeOnce()
         val second = encodeOnce()
 
-        assertEquals(INPUT_FRAME_COUNT, first.size)
-        assertEquals(INPUT_FRAME_COUNT, second.size)
+        assertEquals(EXPECTED_OUTPUT_CANDIDATE_COUNT, first.size)
+        assertEquals(EXPECTED_OUTPUT_CANDIDATE_COUNT, second.size)
+    }
+
+    @Test
+    fun emptyInputDrainsToNoCandidates() {
+        MediaCodecAacEncoder().use { encoder ->
+            assertTrue(encoder.drain().isEmpty())
+        }
     }
 
     @Test
@@ -101,7 +108,7 @@ class MediaCodecAacEncoderTest {
             assertTrue(encoder.drain().isEmpty())
         }
 
-        assertEquals(INPUT_FRAME_COUNT, output.size)
+        assertEquals(EXPECTED_OUTPUT_CANDIDATE_COUNT, output.size)
         output.forEach { unit ->
             assertTrue(unit.bytes.isNotEmpty())
             assertTrue(unit.bytes.size <= MAX_ACCESS_UNIT_BYTES)
@@ -157,6 +164,9 @@ class MediaCodecAacEncoderTest {
         const val SAMPLE_RATE = 48_000.0
         const val SAMPLES_PER_FRAME = 1024
         const val INPUT_FRAME_COUNT = 12
+        const val CODEC_ADDED_CANDIDATE_COUNT = 1
+        const val EXPECTED_OUTPUT_CANDIDATE_COUNT =
+            INPUT_FRAME_COUNT + CODEC_ADDED_CANDIDATE_COUNT
         const val PCM_BYTES_PER_FRAME = 4096
         const val BYTES_PER_STEREO_SAMPLE = 4
         const val MAX_ACCESS_UNIT_BYTES = 65_536
