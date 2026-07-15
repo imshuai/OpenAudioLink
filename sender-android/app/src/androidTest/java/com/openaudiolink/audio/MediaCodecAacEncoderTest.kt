@@ -31,10 +31,13 @@ class MediaCodecAacEncoderTest {
     }
 
     @Test
-    fun emptyInputDrainsToNoCandidates() {
-        MediaCodecAacEncoder().use { encoder ->
-            assertTrue(encoder.drain().isEmpty())
-        }
+    fun emptyInputReturnsCodecAddedCandidate() {
+        val output = MediaCodecAacEncoder().use { encoder -> encoder.drain() }
+
+        assertEquals(CODEC_ADDED_CANDIDATE_COUNT, output.size)
+        val candidate = output.single()
+        assertTrue(candidate.bytes.isNotEmpty())
+        assertTrue(candidate.bytes.size <= MAX_ACCESS_UNIT_BYTES)
     }
 
     @Test
