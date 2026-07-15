@@ -14,6 +14,10 @@ namespace OpenAudioLink.Tests.Receiver
     public sealed class ReceiverRuntimeTests
     {
         private const int SocketTimeoutMilliseconds = 5000;
+        private const string MediaCodecRuntimeInteropEnabled =
+            "OAL_MEDIACODEC_RUNTIME_INTEROP";
+        private const string MediaCodecRuntimeWirePath =
+            "OAL_MEDIACODEC_RUNTIME_WIRE_PATH";
 
         [TestMethod]
         public void StartLoopbackExposesReceiverState()
@@ -98,6 +102,80 @@ namespace OpenAudioLink.Tests.Receiver
         }
 
         [TestMethod]
+        public void AndroidEncodedTestStreamArtifactRunsThroughReceiverRuntime()
+        {
+            string enabled = Environment.GetEnvironmentVariable(
+                MediaCodecRuntimeInteropEnabled);
+            if (string.IsNullOrEmpty(enabled))
+            {
+                return;
+            }
+            Assert.AreEqual("1", enabled);
+            string path = Environment.GetEnvironmentVariable(MediaCodecRuntimeWirePath);
+            Assert.IsFalse(string.IsNullOrEmpty(path), "runtime wire path is missing");
+            Assert.IsTrue(File.Exists(path), "runtime wire artifact does not exist: " + path);
+
+            IReadOnlyList<byte[]> packets = ReadWirePackets(File.ReadAllBytes(path));
+            AssertExactAndroidPackets(packets);
+
+            using (ReceiverRuntime runtime = ReceiverRuntime.StartLoopback())
+            using (TcpClient client = Connect(runtime.Port))
+            {
+                NetworkStream stream = client.GetStream();
+                for (int i = 0; i < packets.Count; i++)
+                {
+                    byte type = PacketParser.ParseHeader(packets[i]).PacketType;
+                    stream.Write(packets[i], 0, packets[i].Length);
+                    if (type == ProtocolConstants.PacketTypeHello)
+                    {
+                        AssertPacket(stream, ProtocolConstants.PacketTypeWelcome,
+                            HandshakePayloads.Welcome(
+                                ProtocolConstants.ResultSuccess,
+                                "Windows PC",
+                                "1.0.0",
+                                1UL));
+                    }
+                    else if (type == ProtocolConstants.PacketTypeStartStream)
+                    {
+                        AssertPacket(stream, ProtocolConstants.PacketTypeStreamReady,
+                            HandshakePayloads.StreamReady(
+                                ProtocolConstants.StreamResultSuccess,
+                                ProtocolConstants.CodecAacLc,
+                                48000u,
+                                2));
+                    }
+                    else if (type == ProtocolConstants.PacketTypePing)
+                    {
+                        AssertPacket(stream, ProtocolConstants.PacketTypePong,
+                            PacketParser.Payload(packets[i]));
+                    }
+                }
+                Assert.AreEqual(-1, stream.ReadByte(), "ReceiverRuntime did not close cleanly.");
+
+                Assert.AreEqual(4, runtime.Renderer.RenderedCount);
+                Assert.AreEqual(0, runtime.Queue.Count);
+                ulong[] timestamps =
+                {
+                    123456003UL, 123477336UL, 123498670UL, 123520003UL,
+                };
+                long left = 0;
+                long right = 0;
+                for (int i = 0; i < 4; i++)
+                {
+                    FakePcmFrame frame = runtime.Renderer.RenderedFrames[i];
+                    Assert.AreEqual((uint)(i + 1), frame.FrameNumber);
+                    Assert.AreEqual(timestamps[i], frame.CaptureTimestamp);
+                    Assert.AreEqual((ushort)21, frame.FrameDuration);
+                    Assert.AreEqual(4096, frame.PcmBytes.Length);
+                    left += ChannelEnergy(frame.PcmBytes, 0);
+                    right += ChannelEnergy(frame.PcmBytes, 1);
+                }
+                Assert.IsTrue(left > 0, "left channel is silent");
+                Assert.IsTrue(right > 0, "right channel is silent");
+            }
+        }
+
+        [TestMethod]
         public void CorruptAacClosesCurrentStreamAndAllowsHealthyReconnect()
         {
             byte[] encodedFrame = TestFixtures.Read("testdata/audio/aac-lc-48k-stereo-1024.raw");
@@ -154,6 +232,107 @@ namespace OpenAudioLink.Tests.Receiver
                 Assert.IsTrue(ChannelEnergy(renderedFrame.PcmBytes, 0) > 0);
                 Assert.IsTrue(ChannelEnergy(renderedFrame.PcmBytes, 1) > 0);
             }
+        }
+
+        private static IReadOnlyList<byte[]> ReadWirePackets(byte[] bytes)
+        {
+            List<byte[]> packets = new List<byte[]>();
+            using (MemoryStream stream = new MemoryStream(bytes, false))
+            {
+                while (stream.Position < stream.Length)
+                {
+                    packets.Add(PacketReader.ReadPacket(stream));
+                }
+                Assert.AreEqual(stream.Length, stream.Position);
+            }
+            Assert.AreEqual(8, packets.Count);
+            return packets;
+        }
+
+        private static void AssertExactAndroidPackets(IReadOnlyList<byte[]> packets)
+        {
+            byte[] types =
+            {
+                ProtocolConstants.PacketTypeHello,
+                ProtocolConstants.PacketTypeStartStream,
+                ProtocolConstants.PacketTypeAudio,
+                ProtocolConstants.PacketTypeAudio,
+                ProtocolConstants.PacketTypeAudio,
+                ProtocolConstants.PacketTypeAudio,
+                ProtocolConstants.PacketTypePing,
+                ProtocolConstants.PacketTypeStopStream,
+            };
+            uint[] sequences = { 1u, 2u, 3u, 4u, 5u, 6u, 7u, 8u };
+            ulong[] timestamps =
+            {
+                123456000UL,
+                123456002UL,
+                123456003UL,
+                123477336UL,
+                123498670UL,
+                123520003UL,
+                123520005UL,
+                123520006UL,
+            };
+
+            Assert.AreEqual(8, packets.Count);
+            for (int i = 0; i < packets.Count; i++)
+            {
+                PacketHeader header = PacketParser.ParseHeader(packets[i]);
+                Assert.AreEqual(types[i], header.PacketType);
+                Assert.AreEqual(sequences[i], header.SequenceNumber);
+                Assert.AreEqual(timestamps[i], header.Timestamp);
+            }
+
+            CollectionAssert.AreEqual(
+                HandshakePayloads.Hello(
+                    "Android Phone",
+                    "1.0.0",
+                    ProtocolConstants.PlatformAndroid,
+                    ProtocolConstants.CapabilityAacSupported),
+                PacketParser.Payload(packets[0]));
+            CollectionAssert.AreEqual(
+                HandshakePayloads.StartStream(
+                    ProtocolConstants.CodecAacLc,
+                    48000u,
+                    2,
+                    192000u,
+                    21),
+                PacketParser.Payload(packets[1]));
+
+            for (int i = 0; i < 4; i++)
+            {
+                byte[] payload = PacketParser.Payload(packets[i + 2]);
+                AudioPayloadValidator.ValidateAacPayload(payload);
+                Assert.AreEqual(ProtocolConstants.CodecAacLc, payload[0]);
+                Assert.AreEqual((uint)(i + 1), ReadUInt32(payload, 1));
+                Assert.AreEqual(timestamps[i + 2], ReadUInt64(payload, 5));
+                Assert.AreEqual((ushort)21, ReadUInt16(payload, 13));
+            }
+
+            CollectionAssert.AreEqual(
+                HandshakePayloads.Ping(6u, 123520004UL),
+                PacketParser.Payload(packets[6]));
+            Assert.AreEqual(0, PacketParser.Payload(packets[7]).Length);
+        }
+
+        private static ushort ReadUInt16(byte[] bytes, int offset)
+        {
+            return (ushort)((bytes[offset] << 8) | bytes[offset + 1]);
+        }
+
+        private static uint ReadUInt32(byte[] bytes, int offset)
+        {
+            return ((uint)bytes[offset] << 24)
+                | ((uint)bytes[offset + 1] << 16)
+                | ((uint)bytes[offset + 2] << 8)
+                | bytes[offset + 3];
+        }
+
+        private static ulong ReadUInt64(byte[] bytes, int offset)
+        {
+            return ((ulong)ReadUInt32(bytes, offset) << 32)
+                | ReadUInt32(bytes, offset + 4);
         }
 
         private static TcpClient Connect(int port)

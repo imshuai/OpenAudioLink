@@ -73,8 +73,13 @@ jobs:
           OAL_TEST_ARCHITECTURE: x64
           OAL_MEDIACODEC_INTEROP: '1'
           OAL_MEDIACODEC_ADTS_PATH: ${{ github.workspace }}\interop\mediacodec-aac-interop.adts
+          OAL_MEDIACODEC_RUNTIME_INTEROP: '1'
+          OAL_MEDIACODEC_RUNTIME_WIRE_PATH: ${{ github.workspace }}\interop\mediacodec-runtime-wire.bin
         run: |
           if (!(Test-Path -LiteralPath $env:OAL_MEDIACODEC_ADTS_PATH)) {
             throw "MediaCodec AAC artifact is missing"
+          }
+          if (!(Test-Path -LiteralPath $env:OAL_MEDIACODEC_RUNTIME_WIRE_PATH)) {
+            throw "MediaCodec runtime wire artifact is missing"
           }
           dotnet test receiver-windows/OpenAudioLink.sln -c Release --logger "console;verbosity=detailed" -- RunConfiguration.TargetPlatform=x64
