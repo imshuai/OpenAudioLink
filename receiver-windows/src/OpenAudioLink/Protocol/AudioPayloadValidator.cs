@@ -24,6 +24,11 @@ namespace OpenAudioLink.Protocol
             {
                 throw new PacketParseException("AAC payload length mismatch.");
             }
+
+            if (encodedSize == 0)
+            {
+                throw new PacketParseException("AAC access unit is empty.");
+            }
         }
     }
 }
