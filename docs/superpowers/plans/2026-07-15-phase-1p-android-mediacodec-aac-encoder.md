@@ -262,12 +262,14 @@ jobs:
           script: |
             test "$(adb shell getprop ro.build.version.sdk | tr -d '\r')" = 29 && echo "Android API level: 29"
             adb logcat -c
-            ./gradlew -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true :app:connectedDebugAndroidTest
+            ./gradlew -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true :app:connectedDebugAndroidTest; TEST_STATUS=$?; adb logcat -d -s MediaCodecAacTest:I TestRunner:E AndroidJUnitRunner:E '*:S'; exit "$TEST_STATUS"
             adb shell pm path com.openaudiolink | grep -F 'package:'
-            adb logcat -d -s MediaCodecAacTest:I '*:S'
 ```
 
-Do not set `profile`; device shape is irrelevant. Do not add a `main` push trigger.
+Each physical script line runs as an independent shell command, so the test
+status and failure log dump must stay on the same physical line; the dump runs
+on both test outcomes and the original test exit code is preserved. Do not set
+`profile`; device shape is irrelevant. Do not add a `main` push trigger.
 The injected AGP property is required because AGP 8.5.2 otherwise uninstalls
 the tested package before a later CI line can export app-private artifacts.
 
@@ -1450,9 +1452,8 @@ jobs:
           script: |
             test "$(adb shell getprop ro.build.version.sdk | tr -d '\r')" = 29 && echo "Android API level: 29"
             adb logcat -c
-            ./gradlew -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true :app:connectedDebugAndroidTest
+            ./gradlew -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true :app:connectedDebugAndroidTest; TEST_STATUS=$?; adb logcat -d -s MediaCodecAacTest:I TestRunner:E AndroidJUnitRunner:E '*:S'; exit "$TEST_STATUS"
             adb shell pm path com.openaudiolink | grep -F 'package:'
-            adb logcat -d -s MediaCodecAacTest:I '*:S'
             adb exec-out run-as com.openaudiolink cat files/mediacodec-aac-interop.adts > "$GITHUB_WORKSPACE/mediacodec-aac-interop.adts"
             test -s "$GITHUB_WORKSPACE/mediacodec-aac-interop.adts"
       - uses: actions/upload-artifact@v4

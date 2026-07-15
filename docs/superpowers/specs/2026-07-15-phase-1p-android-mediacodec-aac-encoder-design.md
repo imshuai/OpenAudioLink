@@ -631,10 +631,13 @@ otherwise uninstalls the tested package before the following `run-as` command
 can read app-private storage. CI also proves the package remains installed and
 the host artifact is non-empty.
 
-The runner clears logcat immediately before instrumentation and dumps only the
-`MediaCodecAacTest` tag afterward. This makes both codec lifecycle records,
-actual access-unit counts, and platform timestamp lists visible in the exact
-workflow log instead of relying on a local HTML test report.
+The runner clears logcat immediately before instrumentation and exports the
+`MediaCodecAacTest`, `TestRunner`, and `AndroidJUnitRunner` tags whether
+instrumentation succeeds or fails. The log dump runs after capturing the test
+status and the workflow preserves that original exit code, making codec
+lifecycle records, failure diagnostics, actual access-unit counts, and platform
+timestamp lists visible in the exact workflow log instead of relying on a local
+HTML test report.
 
 ### Windows interop job
 

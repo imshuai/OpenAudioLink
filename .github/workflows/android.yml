@@ -43,6 +43,5 @@ jobs:
           script: |
             test "$(adb shell getprop ro.build.version.sdk | tr -d '\r')" = 29 && echo "Android API level: 29"
             adb logcat -c
-            ./gradlew -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true :app:connectedDebugAndroidTest
+            ./gradlew -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true :app:connectedDebugAndroidTest; TEST_STATUS=$?; adb logcat -d -s MediaCodecAacTest:I TestRunner:E AndroidJUnitRunner:E '*:S'; exit "$TEST_STATUS"
             adb shell pm path com.openaudiolink | grep -F 'package:'
-            adb logcat -d -s MediaCodecAacTest:I '*:S'
