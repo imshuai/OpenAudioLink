@@ -88,13 +88,36 @@ An API 29 emulator may expose only a software AAC encoder. Passing CI proves And
 
 Hardware selection and real-device coverage remain release gates.
 
+### Reject multi-access-unit output buffers
+
+Android API 29 permits one compressed audio output buffer to contain multiple
+access units, but its synchronous `BufferInfo` exposes no boundaries inside
+that buffer. Version 1 cannot safely packetize such output without a raw AAC
+parser.
+
+Phase 1-P therefore defines a strict compatibility gate rather than assuming
+all codecs behave alike. After twelve exact PCM input frames and output EOS,
+the selected codec must have produced exactly twelve complete non-config
+output buffers. Each returned buffer must also decode independently on Windows
+to exactly one 1024-sample stereo PCM frame. Any codec that batches, drops, or
+adds access units is unsupported and fails the phase instead of being
+mispacketized.
+
+This restriction proves only the API 29 emulator codec selected in CI. The
+standalone wrapper is not connected to the sender runtime, and later device
+qualification must run the same boundary gate before another codec can be
+enabled.
+
 ---
 
 ## Rejected Alternatives
 
 ### Test-only direct `MediaCodec` use
 
-A test-only encoder would prove platform availability but leave no production component for the next playback-capture phase. The fixed wrapper is small and immediately reusable.
+A test-only encoder would prove platform availability but leave no production
+component for the next playback-capture phase. The fixed wrapper is small and
+reusable after a target codec passes the same access-unit boundary gate; this
+phase does not yet connect it to streaming runtime output.
 
 ### Immediate fake-runtime replacement
 
@@ -112,6 +135,14 @@ Different valid encoders may emit different AAC bytes for the same PCM. Phase 1-
 
 There is one fixed Version 1 implementation and no runtime composition in this phase. `IAudioEncoder`, factories, DI, codec-selection policy, and user-configurable format objects would be unused scaffolding.
 
+### Raw AAC access-unit parser
+
+Parsing every AAC raw-data-block element merely to recover boundaries from a
+batched platform buffer would add a second codec-sized subsystem. Phase 1-P
+instead rejects codecs that need such splitting. A boundary-aware platform API
+or parser belongs in a later phase only if the release device matrix proves it
+necessary.
+
 ---
 
 ## Scope
@@ -124,12 +155,16 @@ There is one fixed Version 1 implementation and no runtime composition in this p
 - Caller-owned presentation timestamps.
 - Exact `AudioSpecificConfig = 11 90` validation.
 - Zero, one, or many output access units per `submit`.
+- Exactly one completed output buffer per submitted PCM frame across a full
+  encode-and-drain cycle; batching, loss, or added output is a compatibility
+  failure.
 - Explicit input EOS and output drain.
 - Owner-thread, state, timeout, and deterministic cleanup behavior.
 - JVM tests for the exact codec-config validator.
 - Android instrumentation tests against a real emulator codec.
 - Test-only ADTS artifact creation and validation.
-- Windows Media Foundation decode of every generated access unit.
+- Independent and continuous Windows Media Foundation decode of every
+  generated access unit.
 - Android workflow unit, emulator, and Windows interop jobs.
 - Focused corrections to active Android, testing, and roadmap documentation.
 - Status corrections for completed Phase 1-N and Phase 1-O design specs.
@@ -150,6 +185,7 @@ There is one fixed Version 1 implementation and no runtime composition in this p
 - Hardware encoder selection or requirement.
 - Bitrate presets or user configuration.
 - Real-device or OEM codec matrices.
+- Raw AAC syntax parsing or splitting a batched output buffer.
 - New production dependencies, encoder interfaces, factories, or DI.
 
 ---
@@ -164,6 +200,7 @@ Create:
 
 Modify:
 
+- `sender-android/gradle.properties` — enable AndroidX for the existing AndroidX instrumentation runner and test-only dependencies.
 - `sender-android/app/build.gradle.kts` — minimum AndroidX instrumentation dependencies only.
 - `.github/workflows/android.yml` — unit, API 29 emulator, and Windows interop jobs.
 - `receiver-windows/tests/OpenAudioLink.Tests/Receiver/MediaFoundationAacDecoderTests.cs` — optional CI-artifact decode test using the existing decoder and ADTS parser.
@@ -250,8 +287,15 @@ record codec name
 create fixed MediaFormat
 configure for encode
 start
+validate actual input format
 enter Active state
 ```
+
+After `start`, `getInputFormat()` must report 48 kHz, two channels, and PCM16.
+`KEY_PCM_ENCODING` may be absent because Android defines PCM16 as the default;
+an explicit different value is rejected. This prevents a codec that ignored the
+requested PCM encoding from interpreting the submitted bytes as another raw
+format.
 
 If configuration or startup fails, every acquired codec is released. A codec that started is stopped before release when possible. Missing or unusable AAC encoding is a failed native proof, not a skipped test.
 
@@ -291,13 +335,19 @@ Argument validation happens before native mutation. Wrong frame size or timestam
 
 1. Owner-thread and state validation.
 2. PCM length and presentation-time validation.
-3. Input-buffer acquisition under a five-second monotonic deadline.
+3. Input-buffer acquisition under one five-second monotonic operation deadline.
 4. Output collection while the codec temporarily has no input buffer.
 5. Exact PCM copy into a cleared input buffer.
 6. `queueInputBuffer` with the caller timestamp and no flags.
 7. Collection of every output currently available without waiting for future input.
 
 `dequeueInputBuffer(10_000)` provides bounded blocking. The implementation never busy-spins. If no input buffer becomes available before the operation deadline, the encoder faults.
+
+The same deadline is checked before and after every input/output dequeue and
+therefore covers the platform call itself, continuous output, repeated format
+changes, and buffer-change notifications. A buffer returned after the deadline
+is rejected rather than accepted as a late success; receiving output never
+resets or bypasses the deadline.
 
 The input index and timestamp are committed only after `queueInputBuffer` succeeds.
 
@@ -338,11 +388,18 @@ compatible format is accepted; an incompatible change faults the encoder.
 
 ## Access-Unit Output
 
-An output buffer without `BUFFER_FLAG_PARTIAL_FRAME` completes one raw AAC
-access unit. A buffer carrying `BUFFER_FLAG_PARTIAL_FRAME` is a legal prefix,
-not an error: the wrapper appends its indicated bytes to a private accumulator
-and waits for the next non-partial media buffer. The completed access unit is
-bounded to 65,536 bytes so a broken codec cannot grow memory without limit.
+An output buffer without `BUFFER_FLAG_PARTIAL_FRAME` ends on an access-unit
+boundary, but Android does not guarantee that it contains only one audio access
+unit. Phase 1-P treats it as one candidate only under the strict full-cycle and
+independent-decode compatibility gates above. A buffer carrying
+`BUFFER_FLAG_PARTIAL_FRAME` is a legal prefix, not an error: the wrapper appends
+its indicated bytes to a private accumulator and waits for the next
+non-partial media buffer.
+
+Before any `ByteArray` allocation, non-config output is limited to 65,536 bytes
+and codec-config output is limited to the two canonical bytes. Partial data is
+kept in exact-sized `ByteArray` values rather than a geometrically growing
+stream buffer, so no candidate backing array exceeds 65,536 bytes.
 
 For each output buffer, the implementation:
 
@@ -350,7 +407,7 @@ For each output buffer, the implementation:
 2. Requires canonical configuration to have been validated.
 3. Copies exactly the indicated byte range.
 4. Appends partial media bytes or completes the pending access unit.
-5. Returns one new `EncodedAccessUnit` only when a full unit is complete.
+5. Returns one candidate `EncodedAccessUnit` only when a full platform buffer is complete.
 6. Releases the native output buffer in `finally`.
 
 For an unfragmented unit, `presentationTimeUs` is the platform
@@ -367,6 +424,12 @@ unfinished faults the encoder. An empty EOS buffer is never returned as audio.
 
 The wrapper does not add ADTS, LATM/LOAS framing, container bytes, or protocol fields.
 
+The wrapper counts successfully queued PCM frames and completed output
+candidates. Drain faults unless the counts are equal. Because some candidates
+may already have been returned by earlier `submit` calls, this late full-cycle
+check is sufficient only for the standalone proof; runtime packetization stays
+out of scope until the codec has passed the same device gate.
+
 ---
 
 ## Drain And Cleanup
@@ -377,7 +440,8 @@ The first `drain`:
 2. Queues a zero-length input with `BUFFER_FLAG_END_OF_STREAM`.
 3. Continues dequeuing output until an output buffer carries EOS.
 4. Returns all delayed non-config access units.
-5. Enters `Drained`.
+5. Requires completed output-candidate count to equal queued PCM-frame count.
+6. Enters `Drained`.
 
 The zero-length EOS input uses timestamp `0`. That timestamp has no media or
 wire meaning and is never exposed as an access-unit timestamp.
@@ -414,8 +478,8 @@ Rules:
 - Wrong thread or invalid state throws `IllegalStateException`.
 - Invalid caller data throws `IllegalArgumentException` and does not fault the codec.
 - MediaCodec exceptions, format/config mismatches, invalid native buffer bounds,
-  oversized or unfinished partial output, and operation timeouts enter
-  `Faulted`.
+  oversized or unfinished partial output, input/output count mismatch, and
+  operation timeouts enter `Faulted`.
 - After `Faulted`, only owner-thread `close` is allowed.
 - Error messages name the failed operation; original platform exceptions remain causes.
 - The native test never converts codec absence or mismatch into assumption, skip, or success.
@@ -444,9 +508,10 @@ The success path:
 3. Computes canonical rational presentation timestamps.
 4. Submits all twelve frames without assuming immediate output.
 5. Calls `drain` and appends delayed output.
-6. Requires at least one non-empty complete access unit.
-7. Records the actual access-unit count and platform output timestamps without
-   assuming one input buffer maps to one output buffer.
+6. Requires exactly twelve non-empty completed output candidates. This is the
+   Version 1 compatibility gate, not a general Android scheduling guarantee.
+7. Records the access-unit count and platform output timestamps without
+   requiring output timestamps to equal input timestamps.
 8. Calls idempotent second `drain` and `close`.
 9. Repeats the complete create/encode/drain/close cycle in the same test process.
 10. Writes one successful run as a test-only ADTS file in app-private storage.
@@ -466,7 +531,9 @@ Tests log `codecName`, but do not assert hardware acceleration or a specific imp
 
 ## Test-Only ADTS Artifact
 
-Production output stays raw. Instrumentation code adds one seven-byte CRC-free ADTS header per returned access unit only to carry frame boundaries between CI jobs.
+Production output stays raw. Instrumentation code adds one seven-byte CRC-free
+ADTS header per returned candidate only to carry the twelve proven boundaries
+between CI jobs.
 
 Every generated header encodes:
 
@@ -499,20 +566,25 @@ One MSTest method is active only when the interop environment flag is set. In th
 
 1. Requires the artifact path and file.
 2. Parses strict CRC-free AAC-LC/48 kHz/stereo ADTS boundaries.
-3. Removes every seven-byte header.
-4. Submits every unchanged raw access unit to `MediaFoundationAacDecoder`.
-5. Drains delayed decoder output.
-6. Requires total PCM bytes to equal:
+3. Requires exactly twelve frames and removes every seven-byte header.
+4. Decodes each unchanged candidate with a fresh
+   `MediaFoundationAacDecoder` and requires exactly 4096 PCM bytes, proving the
+   selected codec did not batch multiple decodable AUs into that buffer.
+5. Submits all twelve unchanged raw access units to one decoder and drains
+   delayed output.
+6. Requires continuous total PCM bytes to equal:
 
 ```text
-accessUnitCount * 1024 * 2 channels * 2 bytes
+12 access units * 1024 * 2 channels * 2 bytes = 49,152 bytes
 ```
 
 7. Requires non-zero signed PCM16 energy independently in both channels.
 
 The job runs in an x64 testhost. Existing Phase 1-O CI already proves the decoder ABI independently in x86 and x64; duplicating both architectures in this artifact-transfer job adds no codec-contract evidence.
 
-No AAC or PCM byte hash is asserted.
+No AAC or PCM byte hash is asserted. The exact frame count is a deliberate
+compatibility restriction for the selected codec, not a claim that Android
+requires all AAC encoders to schedule one output per input.
 
 ---
 
@@ -553,6 +625,17 @@ connectedDebugAndroidTest
 
 `reactivecircus/android-emulator-runner@v2` provides the emulator lifecycle. The job enables KVM access, runs instrumentation, extracts the validated ADTS file while the emulator is alive, and uploads it with `actions/upload-artifact@v4`.
 
+The Gradle invocation sets
+`android.injected.androidTest.leaveApksInstalledAfterRun=true`; AGP 8.5.2
+otherwise uninstalls the tested package before the following `run-as` command
+can read app-private storage. CI also proves the package remains installed and
+the host artifact is non-empty.
+
+The runner clears logcat immediately before instrumentation and dumps only the
+`MediaCodecAacTest` tag afterward. This makes both codec lifecycle records,
+actual access-unit counts, and platform timestamp lists visible in the exact
+workflow log instead of relying on a local HTML test report.
+
 ### Windows interop job
 
 The job:
@@ -562,7 +645,8 @@ The job:
 - downloads the artifact with `actions/download-artifact@v4`;
 - requires the file before testing;
 - sets the x64 architecture and interop environment gates;
-- runs the Windows tests through the existing solution;
+- runs the Windows tests through the existing solution with detailed console
+  output so the artifact-specific result line is preserved;
 - requires the artifact-specific MSTest to execute and pass.
 
 The completion review records the exact workflow run, all three job names, and the Windows test count so a missing environment gate cannot silently turn the interop test into a no-op.
@@ -624,7 +708,8 @@ The implementation follows RED to GREEN in this order:
 3. Add native encoder contract tests and observe the missing class failure on exact-head CI.
 4. Implement the minimum encoder and return native CI to green.
 5. Add artifact export and Windows interop RED test.
-6. Connect the dependent CI job and make the exact artifact decode green.
+6. Connect the dependent CI job and require twelve independently decodable
+   one-frame candidates plus the continuous 49,152-byte decode.
 7. Align active docs and spec statuses.
 
 Each task receives specification review followed by code-quality review. Critical and Important findings are fixed and re-reviewed before advancing.
@@ -637,6 +722,7 @@ Phase 1-P is complete when:
 
 - A production `MediaCodecAacEncoder` exists with only the specified fixed API.
 - It configures AAC-LC, 48 kHz, stereo, PCM16, and 192 kbps through Android `MediaCodec`.
+- It confirms the started encoder's actual input format is 48 kHz, stereo PCM16.
 - Every input is exactly one 4096-byte PCM frame with a caller-owned monotonic timestamp.
 - Output configuration is proven to be exactly `AudioSpecificConfig = 11 90` before audio is exposed.
 - Codec-config, empty, partial, and EOS-only buffers are never exposed as audio access units.
@@ -644,12 +730,15 @@ Phase 1-P is complete when:
 - Drain queues input EOS, reads through output EOS, and returns delayed access units.
 - State, thread, timeout, fault, and cleanup behavior follow this design.
 - The API 29 emulator submits twelve deterministic frames twice in one process.
-- Each run drains through output EOS and produces at least one complete raw
-  access unit; the actual AU count and platform timestamps are recorded rather
-  than forced into a one-in/one-out model.
+- Each run drains through output EOS, produces exactly twelve completed output
+  candidates, and records their platform timestamps; this strict compatibility
+  gate rejects batching/loss/addition without claiming a general Android
+  one-in/one-out guarantee.
 - The test-only ADTS artifact contains the exact returned raw bytes and valid frame boundaries.
-- The dependent Windows x64 job decodes every generated access unit with the existing Media Foundation decoder.
-- Windows output length is exactly `AU count * 4096` bytes with non-zero energy in both channels.
+- The dependent Windows x64 job independently decodes every candidate to
+  exactly 4096 PCM bytes, then continuously decodes all twelve with the
+  existing Media Foundation decoder.
+- Continuous Windows output is exactly 49,152 bytes with non-zero energy in both channels.
 - JVM, emulator, interop, existing Windows matrix, docs, fixture, protocol, and Android regression gates pass on the exact phase-branch HEAD.
 - Active docs describe only the standalone proof, preserve buffered submit/drain semantics, and make no capture, runtime, hardware, audible-playback, latency, or device-support claim.
 - No fake sender, Android UI, protocol production, network, capture, service, renderer, or checked-in audio fixture changes occur.
