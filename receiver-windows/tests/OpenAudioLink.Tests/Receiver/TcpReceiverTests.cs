@@ -25,6 +25,17 @@ namespace OpenAudioLink.Tests.Receiver
         }
 
         [TestMethod]
+        public void StreamLifecycleApiPreservesOriginalOverloads()
+        {
+            Assert.IsNotNull(typeof(TcpReceiver).GetMethod(
+                "Start",
+                new[] { typeof(IPAddress), typeof(int), typeof(Action<byte[]>) }));
+            Assert.IsNotNull(typeof(TcpReceiver).GetMethod(
+                "StartLoopback",
+                new[] { typeof(Action<byte[]>) }));
+        }
+
+        [TestMethod]
         public void StreamCallbacksRunInOrderOnTheSessionThread()
         {
             List<string> events = new List<string>();
