@@ -1648,6 +1648,7 @@ private fun writeAndValidateArtifact(units: List<EncodedAccessUnit>) {
         assertEquals(1, profile)
         assertEquals(3, sampleRateIndex)
         assertEquals(2, channelConfiguration)
+        assertEquals(0xfc, stored[offset + 6].toInt() and 0xff)
         val frameLength =
             ((stored[offset + 3].toInt() and 3) shl 11) or
                 ((stored[offset + 4].toInt() and 0xff) shl 3) or
