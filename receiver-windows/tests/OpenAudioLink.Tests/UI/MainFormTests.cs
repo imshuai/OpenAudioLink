@@ -196,13 +196,32 @@ namespace OpenAudioLink.Tests.UI
                         return;
                     }
                 }
-                catch (System.IO.IOException)
+                catch (System.IO.IOException error)
                 {
+                    if (!IsSocketTimeout(error))
+                    {
+                        return;
+                    }
+
                     Thread.Yield();
                 }
             }
 
             Assert.Fail("Timed out waiting for stream EOF.");
+        }
+
+        private static bool IsSocketTimeout(Exception error)
+        {
+            for (Exception current = error; current != null; current = current.InnerException)
+            {
+                SocketException socketError = current as SocketException;
+                if (socketError != null && socketError.SocketErrorCode == SocketError.TimedOut)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static TcpClient Connect(int port)
