@@ -1,6 +1,12 @@
 # Phase 1-Q Windows Decoder Runtime Integration Design
 
-**Status:** Draft for implementation
+**Status:** Implemented
+
+**Verification evidence:** Candidate `f233402988537647918862dbdcd7732862fd2366`
+passed exact-head CI: docs run `29439173872`, Windows run `29439173805`
+(x86 and x64 both successful), and Android run `29439174131`. This evidence
+does not claim audible playback, latency, Android runtime integration, Windows
+version coverage, or Phase 1/Version 1.0 completion.
 
 **Date:** 2026-07-15
 
