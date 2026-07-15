@@ -39,19 +39,32 @@ namespace OpenAudioLink.Receiver
         public static TcpReceiver Start(
             IPAddress address,
             int port,
-            Action<byte[]> audioSink = null,
-            Action streamStarted = null,
-            Action streamEnded = null)
+            Action<byte[]> audioSink = null)
+        {
+            return Start(address, port, audioSink, null, null);
+        }
+
+        public static TcpReceiver Start(
+            IPAddress address,
+            int port,
+            Action<byte[]> audioSink,
+            Action streamStarted,
+            Action streamEnded)
         {
             TcpListener listener = new TcpListener(address, port);
             listener.Start();
             return new TcpReceiver(listener, audioSink, streamStarted, streamEnded);
         }
 
+        public static TcpReceiver StartLoopback(Action<byte[]> audioSink = null)
+        {
+            return StartLoopback(audioSink, null, null);
+        }
+
         public static TcpReceiver StartLoopback(
-            Action<byte[]> audioSink = null,
-            Action streamStarted = null,
-            Action streamEnded = null)
+            Action<byte[]> audioSink,
+            Action streamStarted,
+            Action streamEnded)
         {
             return Start(IPAddress.Loopback, 0, audioSink, streamStarted, streamEnded);
         }
