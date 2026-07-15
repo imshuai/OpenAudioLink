@@ -167,10 +167,15 @@ class MediaCodecAacEncoder : Closeable {
             if (partialOutput.isNotEmpty()) {
                 throw IllegalStateException("MediaCodec ended with a partial access unit.")
             }
-            if (completedCandidateCount != submittedFrameCount) {
+            val expectedCandidateCount = Math.addExact(
+                submittedFrameCount,
+                CODEC_ADDED_CANDIDATE_COUNT,
+            )
+            if (completedCandidateCount != expectedCandidateCount) {
                 throw IllegalStateException(
                     "MediaCodec produced $completedCandidateCount output candidates " +
-                        "for $submittedFrameCount input frames.",
+                        "for $submittedFrameCount input frames; expected " +
+                        "$expectedCandidateCount.",
                 )
             }
             state = State.Drained
@@ -426,6 +431,7 @@ class MediaCodecAacEncoder : Closeable {
         const val CHANNEL_COUNT = 2
         const val BIT_RATE = 192_000
         const val PCM_BYTES_PER_FRAME = 4096
+        const val CODEC_ADDED_CANDIDATE_COUNT = 1
         const val MAX_ACCESS_UNIT_BYTES = 65_536
         const val CANONICAL_CONFIG_BYTES = 2
         const val DEQUEUE_TIMEOUT_US = 10_000L
