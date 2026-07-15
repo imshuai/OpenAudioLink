@@ -77,11 +77,15 @@ Action streamEnded
 Their exact lifecycle is:
 
 1. A busy/rejected client invokes neither callback.
-2. After winning the active-client slot, `Handle` publishes `currentClient`
-   and then rechecks `disposed` before reading or starting a stream. If
-   `Dispose` won the race before publication, the recheck closes the client;
-   if it runs after publication, `Dispose` closes the published client. No
-   stream callback or decoder may start after receiver disposal.
+2. One private lifecycle lock serializes receiver disposal, accepted-client
+   publication, and the complete `streamStarted` callback. `Handle` publishes
+   `currentClient` under that lock only while not disposed. Before starting a
+   stream it reacquires the same lock, rechecks `disposed`, constructs the
+   decoder through `streamStarted`, and marks the stream active before release.
+   `Dispose` marks the receiver disposed and detaches the published client under
+   the same lock, then stops/closes outside it. Thus either stream startup is
+   linearized before disposal or it does not run; no decoder starts after the
+   disposal transition.
 3. For an accepted client, `streamStarted` runs exactly once after a supported
    `START_STREAM` changes `ReceiverSession` to `Streaming`, but before the
    successful `STREAM_READY` bytes are written.
@@ -200,20 +204,26 @@ decoder.Drain
   -> clear session helper
 ```
 
-Cleanup uses `finally` so decoder disposal and active-client release still run
-if drain or rendering fails. A final rendered-count notification is made after
-successful delayed output is rendered.
+Cleanup captures any primary drain/render/callback failure, always attempts
+decoder disposal, then rethrows the primary with its original stack. A cleanup
+failure becomes the session failure only when no primary failure exists;
+otherwise it is attached as secondary exception data and cannot mask the
+primary. Active-client release still runs afterward. A final rendered-count
+notification is made after successful delayed output is rendered.
 
-`TcpReceiver.Dispose` remains non-blocking, but the accepted worker must observe
-the disposed state or closed published client and perform decoder teardown on
-its owner thread. Disposal is not permitted to leave an accepted unpublished
-client running after the listener has stopped.
+`TcpReceiver.Dispose` may wait for an already-entered `streamStarted` callback
+to finish while holding the lifecycle ordering point; it does not wait for an
+established stream's full end callback. The accepted worker observes the closed
+published client and performs decoder teardown on its owner thread. Disposal is
+not permitted to leave an accepted unpublished client running after the
+listener has stopped.
 
 ### Decode failure
 
-Expected decoder initialization, submit, drain, output-shape, and teardown
-failures are converted to the receiver's existing `PacketParseException`
-session-termination path, preserving the original exception as `InnerException`.
+Expected decoder initialization, submit, drain, and output-shape failures plus
+all exceptions surfaced by the decoder's native teardown boundary are converted
+to the receiver's existing `PacketParseException` session-termination path,
+preserving the original exception as `InnerException`.
 `PacketParseException` therefore gains only the standard two-argument
 constructor needed for this wrapping.
 
@@ -321,6 +331,13 @@ loopback proof:
 8. Repeat the complete connection in the same runtime to prove a fresh decoder
    can be created after owner-thread drain/disposal without assuming that the
    ThreadPool reuses the previous worker.
+
+A separate corrupt-stream test sends a non-empty truncated access unit that is
+valid at the packet-shape boundary but cannot yield the required complete PCM
+frame. Whether the MFT rejects during submit or final drain finds unmatched
+metadata, the current connection must close without an invented `ERROR`
+response, render no corrupt frame, and permit a following healthy connection
+to decode successfully.
 
 The native integration test is mandatory in both x86 and x64 processes. A
 missing Media Foundation decoder is a failure, not a skip. Existing standalone

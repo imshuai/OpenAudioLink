@@ -89,6 +89,18 @@ Execute implementation only in:
 
 The spec commit and this plan commit precede Task 1 and remain in the phase diff.
 
+After committing the reviewed spec and plan, create the required isolated worktree from the primary checkout:
+
+```bash
+test -z "$(git status --porcelain)"
+git switch main
+git worktree add \
+  /root/.config/superpowers/worktrees/OpenAudioLink/phase-1q-windows-decoder-runtime-integration \
+  phase-1q-windows-decoder-runtime-integration
+```
+
+Run all following task commands from that worktree. Do not implement in the primary checkout.
+
 The Linux host has no `dotnet`, .NET Framework, or Media Foundation runtime. Python checks run locally; every intentional C# RED and GREEN is established by the exact pushed SHA in the existing `windows-2022` matrix. Intermediate pushes need only the decisive Windows result before continuing; the final phase head requires all `docs`, `windows`, and `android` workflows green.
 
 Push to Gitea with the MTU workaround:
@@ -128,6 +140,37 @@ List exact-head runs:
 HEAD_SHA=$(git rev-parse HEAD)
 gh api 'repos/imshuai/OpenAudioLink/actions/runs?branch=phase-1q-windows-decoder-runtime-integration&per_page=30' \
   --jq ".workflow_runs[] | select(.head_sha == \"$HEAD_SHA\") | [.id,.name,.status,.conclusion] | @tsv"
+```
+
+Use this final gate to wait for exactly one successful `push` run per workflow; pull-request runs at the same SHA are listed separately and never substituted for the branch-push gate:
+
+```bash
+set -e
+HEAD_SHA=$(git rev-parse HEAD)
+ALL_SUCCESS=0
+for attempt in $(seq 1 180); do
+  ALL_SUCCESS=1
+  for WORKFLOW in docs windows android; do
+    COUNT=$(gh api 'repos/imshuai/OpenAudioLink/actions/runs?branch=phase-1q-windows-decoder-runtime-integration&per_page=100' \
+      --jq "[.workflow_runs[] | select(.head_sha == \"$HEAD_SHA\" and .event == \"push\" and .name == \"$WORKFLOW\")] | length")
+    test "$COUNT" -le 1
+    if [ "$COUNT" -ne 1 ]; then
+      ALL_SUCCESS=0
+      continue
+    fi
+    RESULT=$(gh api 'repos/imshuai/OpenAudioLink/actions/runs?branch=phase-1q-windows-decoder-runtime-integration&per_page=100' \
+      --jq "[.workflow_runs[] | select(.head_sha == \"$HEAD_SHA\" and .event == \"push\" and .name == \"$WORKFLOW\")][0] | [.status,.conclusion] | @tsv")
+    [ "$RESULT" = $'completed\tsuccess' ] || ALL_SUCCESS=0
+  done
+  [ "$ALL_SUCCESS" -eq 1 ] && break
+  sleep 10
+done
+test "$ALL_SUCCESS" -eq 1
+
+gh api 'repos/imshuai/OpenAudioLink/actions/runs?branch=phase-1q-windows-decoder-runtime-integration&per_page=100' \
+  --jq ".workflow_runs[] | select(.head_sha == \"$HEAD_SHA\" and .event == \"push\") | [.id,.name,.status,.conclusion] | @tsv"
+gh api 'repos/imshuai/OpenAudioLink/actions/runs?branch=phase-1q-windows-decoder-runtime-integration&per_page=100' \
+  --jq ".workflow_runs[] | select(.head_sha == \"$HEAD_SHA\" and .event == \"pull_request\") | [.id,.name,.status,.conclusion] | @tsv"
 ```
 
 Every implementation task ends with specification review, then code-quality review. Fix every Critical or Important finding and repeat the affected review before advancing.
@@ -207,7 +250,65 @@ Specification review confirms no wire-byte change. Quality review confirms lengt
 - Modify: `receiver-windows/tests/OpenAudioLink.Tests/Receiver/TcpReceiverTests.cs`
 - Modify: `receiver-windows/src/OpenAudioLink/Receiver/TcpReceiver.cs`
 
-- [ ] **Step 1: Add callback ordering and owner-thread test**
+- [ ] **Step 1: Add a compiling API-shape test**
+
+Add this reflection test first so RED is an assertion failure rather than a C# compilation error:
+
+```csharp
+[TestMethod]
+public void StartLoopbackExposesStreamLifecycleCallbacks()
+{
+    Assert.IsNotNull(typeof(TcpReceiver).GetMethod(
+        "StartLoopback",
+        new[] { typeof(Action<byte[]>), typeof(Action), typeof(Action) }));
+}
+```
+
+- [ ] **Step 2: Commit and prove API RED**
+
+```bash
+git add receiver-windows/tests/OpenAudioLink.Tests/Receiver/TcpReceiverTests.cs
+git commit -m "test: require TCP stream lifecycle API"
+```
+
+Push and require exact-head Windows x86/x64 to compile, execute, and fail only because `GetMethod` returns `null`.
+
+- [ ] **Step 3: Add the minimum callback API without behavior**
+
+Add fields and constructor wiring:
+
+```csharp
+private readonly Action streamStarted;
+private readonly Action streamEnded;
+private readonly object lifecycleGate = new object();
+
+private TcpReceiver(
+    TcpListener listener,
+    Action<byte[]> audioSink,
+    Action streamStarted,
+    Action streamEnded)
+{
+    this.listener = listener;
+    this.audioSink = audioSink ?? (_ => { });
+    this.streamStarted = streamStarted ?? (() => { });
+    this.streamEnded = streamEnded ?? (() => { });
+    Port = ((IPEndPoint)listener.LocalEndpoint).Port;
+    ThreadPool.QueueUserWorkItem(_ => AcceptLoop());
+}
+```
+
+Extend `Start` and `StartLoopback` by appending `Action streamStarted = null, Action streamEnded = null`; retain all existing parameter order and defaults. Do not invoke the callbacks yet.
+
+- [ ] **Step 4: Commit and prove API GREEN**
+
+```bash
+git add receiver-windows/src/OpenAudioLink/Receiver/TcpReceiver.cs
+git commit -m "feat: expose TCP stream lifecycle callbacks"
+```
+
+Push and require exact-head Windows x86/x64 green, including the reflection test.
+
+- [ ] **Step 5: Add callback ordering and owner-thread test**
 
 Add this test and use the existing socket helpers:
 
@@ -220,6 +321,8 @@ public void StreamCallbacksRunInOrderOnTheSessionThread()
     int audioThread = 0;
     int endedThread = 0;
 
+    using (ManualResetEventSlim startEntered = new ManualResetEventSlim())
+    using (ManualResetEventSlim releaseStart = new ManualResetEventSlim())
     using (CountdownEvent ended = new CountdownEvent(1))
     using (TcpReceiver receiver = TcpReceiver.StartLoopback(
         payload =>
@@ -231,6 +334,11 @@ public void StreamCallbacksRunInOrderOnTheSessionThread()
         {
             startedThread = Environment.CurrentManagedThreadId;
             calls.Add("start");
+            startEntered.Set();
+            if (!releaseStart.Wait(SocketTimeoutMilliseconds))
+            {
+                throw new PacketParseException("Timed out waiting to release stream start.");
+            }
         },
         () =>
         {
@@ -241,8 +349,24 @@ public void StreamCallbacksRunInOrderOnTheSessionThread()
     using (TcpClient client = Connect(receiver))
     {
         NetworkStream stream = client.GetStream();
-        CompleteHandshake(stream, 1UL);
-        Assert.AreNotEqual(0, startedThread);
+        CompleteHello(stream, 1UL);
+        Write(stream, ProtocolConstants.PacketTypeStartStream, 2u,
+            HandshakePayloads.StartStream(ProtocolConstants.CodecAacLc,
+                48000u, 2, 192000u, 21));
+        try
+        {
+            Assert.IsTrue(startEntered.Wait(SocketTimeoutMilliseconds),
+                "Timed out waiting for stream start callback.");
+            Assert.IsFalse(stream.DataAvailable,
+                "STREAM_READY was written before streamStarted completed.");
+        }
+        finally
+        {
+            releaseStart.Set();
+        }
+        AssertPacket(stream, ProtocolConstants.PacketTypeStreamReady,
+            HandshakePayloads.StreamReady(ProtocolConstants.StreamResultSuccess,
+                ProtocolConstants.CodecAacLc, 48000u, 2));
 
         byte[] encoded = TestFixtures.Read("testdata/audio/aac-lc-48k-stereo-1024.raw");
         Write(stream, ProtocolConstants.PacketTypeAudio, 3u,
@@ -260,7 +384,7 @@ public void StreamCallbacksRunInOrderOnTheSessionThread()
 Add this helper:
 
 ```csharp
-private static void CompleteHandshake(NetworkStream stream, ulong sessionId)
+private static void CompleteHello(NetworkStream stream, ulong sessionId)
 {
     Write(stream, ProtocolConstants.PacketTypeHello, 1u,
         HandshakePayloads.Hello("Android Phone", "1.0.0",
@@ -269,6 +393,11 @@ private static void CompleteHandshake(NetworkStream stream, ulong sessionId)
     AssertPacket(stream, ProtocolConstants.PacketTypeWelcome,
         HandshakePayloads.Welcome(ProtocolConstants.ResultSuccess,
             "Windows PC", "1.0.0", sessionId));
+}
+
+private static void CompleteHandshake(NetworkStream stream, ulong sessionId)
+{
+    CompleteHello(stream, sessionId);
     Write(stream, ProtocolConstants.PacketTypeStartStream, 2u,
         HandshakePayloads.StartStream(ProtocolConstants.CodecAacLc,
             48000u, 2, 192000u, 21));
@@ -278,7 +407,7 @@ private static void CompleteHandshake(NetworkStream stream, ulong sessionId)
 }
 ```
 
-- [ ] **Step 2: Add lifecycle failure and shutdown tests**
+- [ ] **Step 6: Add lifecycle failure and shutdown tests**
 
 Add `StreamStartFailureClosesOnlyThatClientAndAllowsReconnect` with a start callback that throws `new PacketParseException("Injected stream start failure.")` only on its first invocation; require EOF for the first client, a complete second handshake with session ID `2`, and end-callback count `1`.
 
@@ -289,41 +418,16 @@ Also add these bounded tests without sleeps or production test hooks:
 - `DisposeBeforeStartClosesClientWithoutStartingStream`: complete only `HELLO`, dispose the receiver, require EOF or `IOException` within the socket timeout, and require start/end counts `0`.
 - `DisposeDuringStreamInvokesStreamEndedOnOwnerThread`: complete `START_STREAM`, call `receiver.Dispose()`, wait for end, and require the end callback to run on the recorded start-callback thread.
 
-- [ ] **Step 3: Commit and prove intentional RED**
+- [ ] **Step 7: Commit and prove behavioral RED**
 
 ```bash
 git add receiver-windows/tests/OpenAudioLink.Tests/Receiver/TcpReceiverTests.cs
 git commit -m "test: specify TCP stream lifecycle"
 ```
 
-Push and require exact-head Windows compilation failure because the callback parameters do not exist.
+Push and require exact-head Windows x86/x64 to compile and fail in the new lifecycle assertions/timeouts because the callbacks are stored but not invoked.
 
-- [ ] **Step 4: Add optional callbacks**
-
-Add fields and constructor wiring:
-
-```csharp
-private readonly Action streamStarted;
-private readonly Action streamEnded;
-
-private TcpReceiver(
-    TcpListener listener,
-    Action<byte[]> audioSink,
-    Action streamStarted,
-    Action streamEnded)
-{
-    this.listener = listener;
-    this.audioSink = audioSink ?? (_ => { });
-    this.streamStarted = streamStarted ?? (() => { });
-    this.streamEnded = streamEnded ?? (() => { });
-    Port = ((IPEndPoint)listener.LocalEndpoint).Port;
-    ThreadPool.QueueUserWorkItem(_ => AcceptLoop());
-}
-```
-
-Extend `Start` and `StartLoopback` by appending `Action streamStarted = null, Action streamEnded = null`; retain all existing parameter order and defaults.
-
-- [ ] **Step 5: Replace `Handle` with lifecycle-safe ownership**
+- [ ] **Step 8: Replace `Handle` with lifecycle-safe ownership**
 
 Use this complete control structure while retaining the current busy packet:
 
@@ -351,10 +455,13 @@ private void Handle(TcpClient client)
             }
 
             ownsActiveSlot = true;
-            Interlocked.Exchange(ref currentClient, client);
-            if (Volatile.Read(ref disposed) != 0)
+            lock (lifecycleGate)
             {
-                return;
+                if (disposed != 0)
+                {
+                    return;
+                }
+                currentClient = client;
             }
 
             ReceiverSession session = new ReceiverSession(
@@ -367,8 +474,15 @@ private void Handle(TcpClient client)
                     && previousState == ReceiverSessionState.WaitingForStartStream
                     && session.State == ReceiverSessionState.Streaming)
                 {
-                    streamStarted();
-                    streamActive = true;
+                    lock (lifecycleGate)
+                    {
+                        if (disposed != 0)
+                        {
+                            return;
+                        }
+                        streamStarted();
+                        streamActive = true;
+                    }
                 }
                 if (response != null)
                 {
@@ -393,7 +507,13 @@ private void Handle(TcpClient client)
             {
                 if (ownsActiveSlot)
                 {
-                    Interlocked.CompareExchange(ref currentClient, null, client);
+                    lock (lifecycleGate)
+                    {
+                        if (ReferenceEquals(currentClient, client))
+                        {
+                            currentClient = null;
+                        }
+                    }
                     Interlocked.Exchange(ref active, 0);
                 }
             }
@@ -402,7 +522,31 @@ private void Handle(TcpClient client)
 }
 ```
 
-- [ ] **Step 6: Commit and prove GREEN**
+Replace `Dispose` so it shares the same ordering point and closes resources outside the lock:
+
+```csharp
+public void Dispose()
+{
+    TcpClient client;
+    lock (lifecycleGate)
+    {
+        if (disposed != 0)
+        {
+            return;
+        }
+        disposed = 1;
+        client = currentClient;
+        currentClient = null;
+    }
+
+    listener.Stop();
+    client?.Close();
+}
+```
+
+`Dispose` may wait for an already-entered `streamStarted` callback, but client close and owner-thread `streamEnded` cannot overlap an uncommitted startup transition.
+
+- [ ] **Step 9: Commit and prove behavioral GREEN**
 
 ```bash
 git add receiver-windows/src/OpenAudioLink/Receiver/TcpReceiver.cs
@@ -411,7 +555,7 @@ git commit -m "feat: add TCP stream lifecycle callbacks"
 
 Push and require exact-head Windows x86/x64 green.
 
-- [ ] **Step 7: Review Task 2**
+- [ ] **Step 10: Review Task 2**
 
 Specification review traces every callback path. Quality review inspects `active/currentClient/disposed`, callback-before-`STREAM_READY`, end-before-EOF, nested cleanup, and source compatibility.
 
@@ -457,9 +601,41 @@ private static void AssertStereoEnergy(byte[] pcm)
 
 - [ ] **Step 2: Update the WinForms status test**
 
-Rename `FakeStreamUpdatesRenderedFrameStatus` to `DecodedStreamUpdatesRenderedFrameStatus`. Keep its three frames and `PING` check, then send `STOP_STREAM` and read EOF before inspecting the renderer or label so final decoder drain is inside the test barrier. Preserve metadata and `Rendered frames: 3` assertions. Replace encoded-byte equality with a 4096-byte length check and the same complete `AssertStereoEnergy` helper inside `MainFormTests`; do not add a production test utility.
+Rename `FakeStreamUpdatesRenderedFrameStatus` to `DecodedStreamUpdatesRenderedFrameStatus`. Keep its three frames and `PING` check, then send `STOP_STREAM` and read EOF before inspecting the renderer so final decoder drain is inside the test barrier. Require `runtime.Renderer.RenderedCount == 3`, preserve metadata checks, and replace encoded-byte equality with a 4096-byte length check plus the same complete `AssertStereoEnergy` helper inside `MainFormTests`.
 
-- [ ] **Step 3: Commit and prove intentional native RED**
+Because `MainForm.UpdateRenderedFrames` may use `BeginInvoke`, add `using System.Diagnostics;` and wait through the STA message queue without sleeps:
+
+```csharp
+private static void WaitForVisibleText(Control parent, string expected)
+{
+    Stopwatch timeout = Stopwatch.StartNew();
+    while (timeout.ElapsedMilliseconds < SocketTimeoutMilliseconds)
+    {
+        Application.DoEvents();
+        if (VisibleText(parent).Contains(expected))
+        {
+            return;
+        }
+        Thread.Yield();
+    }
+    StringAssert.Contains(VisibleText(parent), expected);
+}
+```
+
+Use `WaitForVisibleText(form, "Rendered frames: 3")`. Keep all helpers test-local; add no production test utility.
+
+- [ ] **Step 3: Add corrupt-stream isolation and reconnect coverage**
+
+Add `CorruptAacClosesCurrentStreamAndAllowsHealthyReconnect` to `ReceiverRuntimeTests`:
+
+1. Start a supported stream and send a non-empty one-byte truncation of the canonical raw fixture, which passes packet-shape validation but cannot represent the complete canonical access unit.
+2. Send `STOP_STREAM` if the decoder has not already closed the socket; accept `IOException` from that write when native submit already failed.
+3. Require connection EOF/`IOException` without receiving an `ERROR` packet and require zero rendered frames from the corrupt stream.
+4. Connect a second client to the same runtime, send one complete canonical frame, stop, read EOF, and require one 4096-byte non-silent frame with the healthy packet's metadata.
+
+This test remains valid whether the MFT rejects during `Submit` or accepts input and the final drain detects unmatched metadata. The current fake runtime fails because it renders the one-byte encoded payload.
+
+- [ ] **Step 4: Commit and prove intentional native RED**
 
 ```bash
 git add receiver-windows/tests/OpenAudioLink.Tests/Receiver/ReceiverRuntimeTests.cs \
@@ -469,7 +645,7 @@ git commit -m "test: require native receiver runtime decode"
 
 Push and require exact-head Windows x86/x64 failure because the current runtime stores encoded AAC rather than 4096-byte PCM.
 
-- [ ] **Step 4: Preserve native failure context**
+- [ ] **Step 5: Preserve native failure context**
 
 Add to `PacketParseException`:
 
@@ -480,7 +656,7 @@ public PacketParseException(string message, Exception innerException)
 }
 ```
 
-- [ ] **Step 5: Add private decoder-session state**
+- [ ] **Step 6: Add private decoder-session state**
 
 Inside `ReceiverRuntime`, add a private `DecoderSession` with:
 
@@ -497,9 +673,25 @@ private int pcmLength;
 private bool faulted;
 ```
 
-Add `using System.Collections.Generic;` and `using OpenAudioLink.Protocol;` to `ReceiverRuntime.cs`.
+Add `using System.Collections.Generic;`, `using System.Runtime.ExceptionServices;`, and `using OpenAudioLink.Protocol;` to `ReceiverRuntime.cs`.
 
 Initialize every managed field/buffer before constructing `MediaFoundationAacDecoder`. Add a private immutable `FrameMetadata` with `uint FrameNumber`, `ulong CaptureTimestamp`, and `ushort FrameDuration`; add no public parser or decoder type.
+
+The constructor performs no potentially failing work after native construction:
+
+```csharp
+public DecoderSession(
+    AudioFrameQueue queue,
+    FakeAudioRenderer renderer,
+    Action<int> renderedCountChanged)
+{
+    this.queue = queue ?? throw new ArgumentNullException(nameof(queue));
+    this.renderer = renderer ?? throw new ArgumentNullException(nameof(renderer));
+    this.renderedCountChanged = renderedCountChanged
+        ?? throw new ArgumentNullException(nameof(renderedCountChanged));
+    decoder = new MediaFoundationAacDecoder();
+}
+```
 
 The public-to-helper audio path is exactly:
 
@@ -514,7 +706,7 @@ renderedCountChanged(renderer.RenderedCount);
 
 `Submit` reads metadata at offsets `1`, `5`, and `13`, copies exactly `Encoded Size` bytes from `ProtocolConstants.AudioPayloadHeaderSize`, enqueues metadata before native submit, and forwards all returned chunks to `RenderChunks`.
 
-- [ ] **Step 6: Implement arbitrary-chunk PCM assembly**
+- [ ] **Step 7: Implement arbitrary-chunk PCM assembly**
 
 Use this assembler:
 
@@ -553,9 +745,9 @@ foreach (byte[] chunk in chunks)
 
 `Fault` sets `faulted = true` and throws `PacketParseException`. Wrap only native `PlatformNotSupportedException` and `InvalidOperationException` in the two-argument exception; do not catch resource exhaustion or unrelated callback/programming errors.
 
-- [ ] **Step 7: Implement final drain and guaranteed disposal**
+- [ ] **Step 8: Implement final drain and guaranteed disposal**
 
-`Finish` always disposes the decoder in `finally`. If not faulted, call `Drain`, assemble every delayed chunk, notify the rendered count, and require:
+`Finish` captures any primary failure and then always attempts decoder disposal before rethrowing. If not faulted, call `Drain`, assemble every delayed chunk, notify the rendered count, and require:
 
 ```csharp
 if (pcmLength != 0)
@@ -574,57 +766,65 @@ if (queue.Count != 0)
 
 If submit already faulted, skip another `Drain` but still dispose on the owner thread. Convert expected drain/dispose failures to `PacketParseException`.
 
-Use this control shape so every exit reaches native teardown:
+Use this control shape so every exit reaches native teardown, the primary failure keeps its stack, and cleanup cannot mask it:
 
 ```csharp
 public void Finish()
 {
+    Exception failure = null;
     try
     {
-        if (faulted)
+        if (!faulted)
         {
-            return;
+            IReadOnlyList<byte[]> chunks;
+            try
+            {
+                chunks = decoder.Drain();
+            }
+            catch (PlatformNotSupportedException ex)
+            {
+                faulted = true;
+                throw new PacketParseException("AAC decoder drain failed.", ex);
+            }
+            catch (InvalidOperationException ex)
+            {
+                faulted = true;
+                throw new PacketParseException("AAC decoder drain failed.", ex);
+            }
+            RenderChunks(chunks);
+            RequireCompleteOutput();
+            renderedCountChanged(renderer.RenderedCount);
         }
-
-        IReadOnlyList<byte[]> chunks;
-        try
-        {
-            chunks = decoder.Drain();
-        }
-        catch (PlatformNotSupportedException ex)
-        {
-            faulted = true;
-            throw new PacketParseException("AAC decoder drain failed.", ex);
-        }
-        catch (InvalidOperationException ex)
-        {
-            faulted = true;
-            throw new PacketParseException("AAC decoder drain failed.", ex);
-        }
-
-        RenderChunks(chunks);
-        RequireCompleteOutput();
-        renderedCountChanged(renderer.RenderedCount);
     }
-    finally
+    catch (Exception ex)
     {
-        try
+        failure = ex;
+    }
+
+    try
+    {
+        decoder.Dispose();
+    }
+    catch (Exception ex)
+    {
+        if (failure == null)
         {
-            decoder.Dispose();
+            failure = new PacketParseException("AAC decoder disposal failed.", ex);
         }
-        catch (PlatformNotSupportedException ex)
+        else
         {
-            throw new PacketParseException("AAC decoder disposal failed.", ex);
+            failure.Data["OpenAudioLink.DecoderDisposeError"] = ex;
         }
-        catch (InvalidOperationException ex)
-        {
-            throw new PacketParseException("AAC decoder disposal failed.", ex);
-        }
+    }
+
+    if (failure != null)
+    {
+        ExceptionDispatchInfo.Capture(failure).Throw();
     }
 }
 ```
 
-- [ ] **Step 8: Wire the helper through lifecycle callbacks**
+- [ ] **Step 9: Wire the helper through lifecycle callbacks**
 
 Replace the fake composition in `ReceiverRuntime.Start` with:
 
@@ -669,7 +869,7 @@ TcpReceiver receiver = TcpReceiver.Start(
 
 No operation after successful native construction may fail before publishing `session`; buffers initialize first and the existing decoder constructor unwinds its own partial startup.
 
-- [ ] **Step 9: Commit and prove GREEN**
+- [ ] **Step 10: Commit and prove GREEN**
 
 ```bash
 git add receiver-windows/src/OpenAudioLink/Protocol/PacketParseException.cs \
@@ -679,7 +879,7 @@ git commit -m "feat: decode TCP AAC in Windows runtime"
 
 Push and require exact-head Windows x86/x64 green. Confirm runtime, UI, TCP lifecycle, standalone decoder, protocol, and architecture tests all executed.
 
-- [ ] **Step 10: Review Task 3**
+- [ ] **Step 11: Review Task 3**
 
 Specification review traces one packet through validation, queue, metadata FIFO, submit, arbitrary chunks, render, drain, and reconnect. Quality review inspects exception filtering, partial-start cleanup, disposal under every throw path, buffer clone safety, leftover gates, and absence of new abstractions/dependencies/threads.
 
@@ -780,6 +980,7 @@ python3 -m unittest discover -s tools/audio -p 'test_*.py'
 python3 tools/audio/validate_aac_fixture.py
 python3 tools/protocol/generate_golden_packets.py --check
 git diff --check 5dbd9a71ef161743caed133c4960b55165081e58..HEAD
+test -z "$(git status --porcelain)"
 git status --short --branch
 ```
 
