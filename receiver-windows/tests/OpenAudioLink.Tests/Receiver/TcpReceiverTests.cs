@@ -378,8 +378,13 @@ namespace OpenAudioLink.Tests.Receiver
             {
                 Assert.AreEqual(-1, stream.ReadByte());
             }
-            catch (IOException)
+            catch (IOException exception)
             {
+                SocketException socketException = exception.InnerException as SocketException;
+                if (socketException != null && socketException.SocketErrorCode == SocketError.TimedOut)
+                {
+                    Assert.Fail("Timed out waiting for the receiver to close the client.");
+                }
             }
         }
 
