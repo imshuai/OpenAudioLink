@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
@@ -13,6 +14,14 @@ namespace OpenAudioLink.Tests.Receiver
     public sealed class TcpReceiverTests
     {
         private const int SocketTimeoutMilliseconds = 5000;
+
+        [TestMethod]
+        public void StartLoopbackExposesStreamLifecycleCallbacks()
+        {
+            Assert.IsNotNull(typeof(TcpReceiver).GetMethod(
+                "StartLoopback",
+                new[] { typeof(Action<byte[]>), typeof(Action), typeof(Action) }));
+        }
 
         [TestMethod]
         public void ClientCompletesPhase1aHandshakeAndDeliversAudioToQueue()
