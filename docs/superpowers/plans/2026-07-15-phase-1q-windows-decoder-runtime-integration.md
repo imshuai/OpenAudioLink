@@ -357,7 +357,7 @@ public void StreamCallbacksRunInOrderOnTheSessionThread()
         {
             Assert.IsTrue(startEntered.Wait(SocketTimeoutMilliseconds),
                 "Timed out waiting for stream start callback.");
-            stream.ReadTimeout = 100;
+            stream.ReadTimeout = SocketTimeoutMilliseconds;
             try
             {
                 int unexpected = stream.ReadByte();
@@ -392,6 +392,8 @@ public void StreamCallbacksRunInOrderOnTheSessionThread()
     }
 }
 ```
+
+The callback remains blocked for the receiver's full five-second socket timeout while the loopback client attempts a real read. A timeout consumes no byte; after `releaseStart`, the normal packet reader must still receive the complete `STREAM_READY` packet.
 
 Add this helper:
 
