@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
@@ -42,7 +43,7 @@ namespace OpenAudioLink.Tests.UI
         }
 
         [TestMethod]
-        public void FakeStreamUpdatesRenderedFrameStatus()
+        public void DecodedStreamUpdatesRenderedFrameStatus()
         {
             RunSta(() =>
             {
@@ -74,21 +75,24 @@ namespace OpenAudioLink.Tests.UI
                     Write(stream, ProtocolConstants.PacketTypePing, 6u, ping);
                     AssertPacket(stream, ProtocolConstants.PacketTypePong, ping);
 
-                    StringAssert.Contains(VisibleText(form), "Rendered frames: 3");
+                    Write(stream, ProtocolConstants.PacketTypeStopStream, 7u, new byte[0]);
+                    AssertEndOfStream(stream);
+
+                    WaitForVisibleText(form, "Rendered frames: 3");
                     ReceiverRuntime runtime = (ReceiverRuntime)typeof(MainForm)
                         .GetField("runtime", BindingFlags.Instance | BindingFlags.NonPublic)
                         .GetValue(form);
                     IReadOnlyList<FakePcmFrame> renderedFrames = runtime.Renderer.RenderedFrames;
-                    Assert.AreEqual(captureTimestamps.Length, renderedFrames.Count);
+                    Assert.AreEqual(3, runtime.Renderer.RenderedCount);
+                    Assert.AreEqual(3, renderedFrames.Count);
                     for (int i = 0; i < captureTimestamps.Length; i++)
                     {
                         Assert.AreEqual((uint)(i + 1), renderedFrames[i].FrameNumber);
                         Assert.AreEqual(captureTimestamps[i], renderedFrames[i].CaptureTimestamp);
                         Assert.AreEqual((ushort)21, renderedFrames[i].FrameDuration);
-                        CollectionAssert.AreEqual(encodedFrame, renderedFrames[i].PcmBytes);
+                        Assert.AreEqual(4096, renderedFrames[i].PcmBytes.Length);
+                        AssertStereoEnergy(renderedFrames[i].PcmBytes);
                     }
-
-                    Write(stream, ProtocolConstants.PacketTypeStopStream, 7u, new byte[0]);
                 }
             });
         }
@@ -144,6 +148,61 @@ namespace OpenAudioLink.Tests.UI
             }
 
             return string.Join("\n", parts.ToArray());
+        }
+
+        private static void WaitForVisibleText(Control parent, string expected)
+        {
+            Stopwatch timeout = Stopwatch.StartNew();
+            while (timeout.ElapsedMilliseconds < SocketTimeoutMilliseconds)
+            {
+                if (VisibleText(parent).Contains(expected))
+                {
+                    return;
+                }
+
+                Application.DoEvents();
+                Thread.Yield();
+            }
+
+            StringAssert.Contains(VisibleText(parent), expected);
+        }
+
+        private static void AssertStereoEnergy(byte[] pcmBytes)
+        {
+            Assert.AreEqual(0, pcmBytes.Length % 4);
+            long leftEnergy = 0;
+            long rightEnergy = 0;
+            for (int i = 0; i < pcmBytes.Length; i += 4)
+            {
+                leftEnergy += Math.Abs((int)BitConverter.ToInt16(pcmBytes, i));
+                rightEnergy += Math.Abs((int)BitConverter.ToInt16(pcmBytes, i + 2));
+            }
+
+            Assert.IsTrue(leftEnergy > 0, "Expected non-zero left-channel PCM energy.");
+            Assert.IsTrue(rightEnergy > 0, "Expected non-zero right-channel PCM energy.");
+        }
+
+        private static void AssertEndOfStream(NetworkStream stream)
+        {
+            stream.ReadTimeout = 100;
+            byte[] buffer = new byte[256];
+            Stopwatch timeout = Stopwatch.StartNew();
+            while (timeout.ElapsedMilliseconds < SocketTimeoutMilliseconds)
+            {
+                try
+                {
+                    if (stream.Read(buffer, 0, buffer.Length) == 0)
+                    {
+                        return;
+                    }
+                }
+                catch (System.IO.IOException)
+                {
+                    Thread.Yield();
+                }
+            }
+
+            Assert.Fail("Timed out waiting for stream EOF.");
         }
 
         private static TcpClient Connect(int port)
