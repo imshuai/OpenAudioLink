@@ -88,18 +88,22 @@ namespace OpenAudioLink.Receiver
 
         private sealed class DecoderSession
         {
-            private const int AudioPayloadHeaderSize = 19;
+            private const int PcmFrameSize = 4096;
+            private const int PcmBlockAlignment = 4;
 
             private readonly AudioFrameQueue queue;
             private readonly FakeAudioRenderer renderer;
             private readonly Action<int> renderedCountChanged;
             private readonly Queue<FrameMetadata> metadata = new Queue<FrameMetadata>();
-            private readonly byte[] pcmFrame = new byte[4096];
+            private readonly byte[] pcmFrame = new byte[PcmFrameSize];
             private readonly MediaFoundationAacDecoder decoder;
             private int pcmLength;
             private bool faulted;
 
-            public DecoderSession(AudioFrameQueue queue, FakeAudioRenderer renderer, Action<int> renderedCountChanged)
+            public DecoderSession(
+                AudioFrameQueue queue,
+                FakeAudioRenderer renderer,
+                Action<int> renderedCountChanged)
             {
                 if (queue == null)
                 {
@@ -128,7 +132,8 @@ namespace OpenAudioLink.Receiver
                 byte[] queuedPayload;
                 while (queue.TryDequeue(out queuedPayload))
                 {
-                    if (queuedPayload == null || queuedPayload.Length < AudioPayloadHeaderSize)
+                    if (queuedPayload == null ||
+                        queuedPayload.Length < ProtocolConstants.AudioPayloadHeaderSize)
                     {
                         Fault("Invalid audio payload length.");
                     }
@@ -138,17 +143,22 @@ namespace OpenAudioLink.Receiver
                         PacketParser.ReadUInt32(queuedPayload, 9);
                     ushort duration = (ushort)((queuedPayload[13] << 8) | queuedPayload[14]);
                     uint encodedSize = PacketParser.ReadUInt32(queuedPayload, 15);
-                    if ((uint)(queuedPayload.Length - AudioPayloadHeaderSize) != encodedSize ||
+                    if ((uint)(queuedPayload.Length - ProtocolConstants.AudioPayloadHeaderSize) != encodedSize ||
                         encodedSize > int.MaxValue)
                     {
                         Fault("Invalid audio payload length.");
                     }
 
                     byte[] encoded = new byte[(int)encodedSize];
-                    Buffer.BlockCopy(queuedPayload, AudioPayloadHeaderSize, encoded, 0, encoded.Length);
+                    Buffer.BlockCopy(
+                        queuedPayload,
+                        ProtocolConstants.AudioPayloadHeaderSize,
+                        encoded,
+                        0,
+                        encoded.Length);
                     metadata.Enqueue(new FrameMetadata(frameNumber, timestamp, duration));
 
-                    IEnumerable<byte[]> chunks;
+                    IReadOnlyList<byte[]> chunks;
                     try
                     {
                         chunks = decoder.Submit(encoded);
@@ -164,6 +174,8 @@ namespace OpenAudioLink.Receiver
 
                     RenderChunks(chunks);
                 }
+
+                renderedCountChanged(renderer.RenderedCount);
             }
 
             public void Finish()
@@ -173,7 +185,7 @@ namespace OpenAudioLink.Receiver
                 {
                     if (!faulted)
                     {
-                        IEnumerable<byte[]> chunks;
+                        IReadOnlyList<byte[]> chunks;
                         try
                         {
                             chunks = decoder.Drain();
@@ -233,7 +245,7 @@ namespace OpenAudioLink.Receiver
                 }
             }
 
-            private void RenderChunks(IEnumerable<byte[]> chunks)
+            private void RenderChunks(IReadOnlyList<byte[]> chunks)
             {
                 if (chunks == null)
                 {
@@ -242,7 +254,7 @@ namespace OpenAudioLink.Receiver
 
                 foreach (byte[] chunk in chunks)
                 {
-                    if (chunk == null || chunk.Length == 0 || chunk.Length % 4 != 0)
+                    if (chunk == null || chunk.Length == 0 || chunk.Length % PcmBlockAlignment != 0)
                     {
                         Fault("AAC decoder returned an invalid PCM chunk.");
                     }
@@ -250,11 +262,11 @@ namespace OpenAudioLink.Receiver
                     int offset = 0;
                     while (offset < chunk.Length)
                     {
-                        int copied = Math.Min(pcmFrame.Length - pcmLength, chunk.Length - offset);
+                        int copied = Math.Min(PcmFrameSize - pcmLength, chunk.Length - offset);
                         Buffer.BlockCopy(chunk, offset, pcmFrame, pcmLength, copied);
                         offset += copied;
                         pcmLength += copied;
-                        if (pcmLength == pcmFrame.Length)
+                        if (pcmLength == PcmFrameSize)
                         {
                             if (metadata.Count == 0)
                             {
@@ -262,7 +274,12 @@ namespace OpenAudioLink.Receiver
                             }
 
                             FrameMetadata frame = metadata.Dequeue();
-                            renderer.Render(new FakePcmFrame(frame.FrameNumber, frame.Timestamp, frame.Duration, pcmFrame));
+                            renderer.Render(
+                                new FakePcmFrame(
+                                    frame.FrameNumber,
+                                    frame.Timestamp,
+                                    frame.Duration,
+                                    pcmFrame));
                             pcmLength = 0;
                         }
                     }
