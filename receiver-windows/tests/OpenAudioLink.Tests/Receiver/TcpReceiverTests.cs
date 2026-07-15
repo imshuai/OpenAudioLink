@@ -45,7 +45,10 @@ namespace OpenAudioLink.Tests.Receiver
                     events.Add("start");
                     startThread = Thread.CurrentThread.ManagedThreadId;
                     startEntered.Set();
-                    releaseStart.Wait(SocketTimeoutMilliseconds);
+                    if (!releaseStart.Wait(SocketTimeoutMilliseconds * 2))
+                    {
+                        throw new PacketParseException("Timed out waiting to release stream start.");
+                    }
                 },
                 () =>
                 {
@@ -151,12 +154,14 @@ namespace OpenAudioLink.Tests.Receiver
                 () => Interlocked.Increment(ref starts),
                 () => Interlocked.Increment(ref ends)))
             using (TcpClient first = Connect(receiver))
-            using (TcpClient second = Connect(receiver))
             {
                 CompleteHandshake(first.GetStream(), 1UL);
-                NetworkStream secondStream = second.GetStream();
-                Write(secondStream, ProtocolConstants.PacketTypeHello, 1u, HandshakePayloads.Hello("Android Phone 2", "1.0.0", ProtocolConstants.PlatformAndroid, ProtocolConstants.CapabilityAacSupported));
-                AssertPacket(secondStream, ProtocolConstants.PacketTypeWelcome, HandshakePayloads.Welcome(ProtocolConstants.ResultReceiverBusy, "Windows PC", "1.0.0", 0));
+                using (TcpClient second = Connect(receiver))
+                {
+                    NetworkStream secondStream = second.GetStream();
+                    Write(secondStream, ProtocolConstants.PacketTypeHello, 1u, HandshakePayloads.Hello("Android Phone 2", "1.0.0", ProtocolConstants.PlatformAndroid, ProtocolConstants.CapabilityAacSupported));
+                    AssertPacket(secondStream, ProtocolConstants.PacketTypeWelcome, HandshakePayloads.Welcome(ProtocolConstants.ResultReceiverBusy, "Windows PC", "1.0.0", 0));
+                }
                 Assert.AreEqual(1, starts);
 
                 Write(first.GetStream(), ProtocolConstants.PacketTypeStopStream, 3u, new byte[0]);
@@ -371,7 +376,7 @@ namespace OpenAudioLink.Tests.Receiver
         {
             try
             {
-                Assert.AreEqual(0, stream.ReadByte());
+                Assert.AreEqual(-1, stream.ReadByte());
             }
             catch (IOException)
             {
