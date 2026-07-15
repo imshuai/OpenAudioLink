@@ -18,7 +18,7 @@ class MainActivity : Activity() {
             setSingleLine(true)
             imeOptions = EditorInfo.IME_ACTION_DONE
         }
-        val connectButton = Button(this).apply { text = "Connect Fake Stream" }
+        val connectButton = Button(this).apply { text = "Connect Encoded Test Stream" }
         val statusText = TextView(this).apply { text = ManualConnectStatus.Idle.name }
         val controller = ManualConnectController { host -> TcpHandshakeClient().connect(host) }
 

@@ -43,11 +43,6 @@ class HandshakeClientTest {
     }
 
     @Test
-    fun fakeAacFrame_matchesCanonicalFixture() {
-        assertArrayEquals(TestFixtures.read("testdata/audio/aac-lc-48k-stereo-1024.raw"), FakeAacFrameBytes)
-    }
-
-    @Test
     fun runReturnsFalseWhenReceiverSendsDataAfterStop() {
         val input = ByteArrayInputStream(successfulResponses() + byteArrayOf(0x01))
 

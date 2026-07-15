@@ -1,13 +1,13 @@
 package com.openaudiolink.network
 
+import com.openaudiolink.audio.encodeDeterministicTestStream
 import com.openaudiolink.protocol.ProtocolConstants
 import java.net.InetSocketAddress
 import java.net.Socket
 
 class TcpHandshakeClient(
-    private val audioFrameSupplier: () -> List<ByteArray> = {
-        List(3) { FakeAacFrameBytes.clone() }
-    },
+    private val audioFrameSupplier: () -> List<ByteArray> =
+        ::encodeDeterministicTestStream,
 ) {
     fun connect(host: String, port: Int = ProtocolConstants.DefaultPort): Boolean = Socket().use { socket ->
         socket.connect(InetSocketAddress(host, port), 10_000)
