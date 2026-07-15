@@ -191,10 +191,13 @@ namespace OpenAudioLink.Tests.UI
             {
                 try
                 {
-                    if (stream.Read(buffer, 0, buffer.Length) == 0)
+                    int bytesRead = stream.Read(buffer, 0, buffer.Length);
+                    if (bytesRead == 0)
                     {
                         return;
                     }
+
+                    Assert.Fail("Received an unexpected packet while waiting for stream EOF.");
                 }
                 catch (System.IO.IOException error)
                 {
