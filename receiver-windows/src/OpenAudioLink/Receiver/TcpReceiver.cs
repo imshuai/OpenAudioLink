@@ -155,29 +155,28 @@ namespace OpenAudioLink.Receiver
                 catch (PacketParseException) { }
                 finally
                 {
-                    if (streamActive)
+                    try
                     {
-                        try
+                        if (streamActive)
+                        {
+                            try { streamEnded(); }
+                            catch (PacketParseException) { }
+                        }
+                    }
+                    finally
+                    {
+                        if (ownsActiveSlot)
                         {
                             lock (lifecycleGate)
                             {
-                                streamEnded();
+                                if (ReferenceEquals(currentClient, client))
+                                {
+                                    currentClient = null;
+                                }
                             }
-                        }
-                        catch (PacketParseException) { }
-                    }
 
-                    if (ownsActiveSlot)
-                    {
-                        lock (lifecycleGate)
-                        {
-                            if (ReferenceEquals(currentClient, client))
-                            {
-                                currentClient = null;
-                            }
+                            Interlocked.Exchange(ref active, 0);
                         }
-
-                        Interlocked.Exchange(ref active, 0);
                     }
                 }
             }
