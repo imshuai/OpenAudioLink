@@ -45,7 +45,7 @@ jobs:
             adb logcat -c
             ./gradlew -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true :app:connectedDebugAndroidTest; TEST_STATUS=$?; adb logcat -d -s MediaCodecAacTest:I TestRunner:E AndroidJUnitRunner:E '*:S'; exit "$TEST_STATUS"
             adb shell pm path com.openaudiolink | grep -F 'package:'
-            adb shell run-as com.openaudiolink test -s files/mediacodec-aac-interop.adts
+            adb shell "run-as com.openaudiolink /system/bin/sh -c 'test -s files/mediacodec-aac-interop.adts'"
             adb exec-out run-as com.openaudiolink cat files/mediacodec-aac-interop.adts > "$GITHUB_WORKSPACE/mediacodec-aac-interop.adts"
             test -s "$GITHUB_WORKSPACE/mediacodec-aac-interop.adts"
       - uses: actions/upload-artifact@v4

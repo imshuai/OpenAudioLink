@@ -1510,7 +1510,7 @@ jobs:
             adb logcat -c
             ./gradlew -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true :app:connectedDebugAndroidTest; TEST_STATUS=$?; adb logcat -d -s MediaCodecAacTest:I TestRunner:E AndroidJUnitRunner:E '*:S'; exit "$TEST_STATUS"
             adb shell pm path com.openaudiolink | grep -F 'package:'
-            adb shell run-as com.openaudiolink test -s files/mediacodec-aac-interop.adts
+            adb shell "run-as com.openaudiolink /system/bin/sh -c 'test -s files/mediacodec-aac-interop.adts'"
             adb exec-out run-as com.openaudiolink cat files/mediacodec-aac-interop.adts > "$GITHUB_WORKSPACE/mediacodec-aac-interop.adts"
             test -s "$GITHUB_WORKSPACE/mediacodec-aac-interop.adts"
       - uses: actions/upload-artifact@v4
@@ -1583,8 +1583,11 @@ Push exact HEAD. Expected:
 Require that exact device-side missing-file failure; unrelated C#, emulator,
 codec, Windows parser, or workflow errors are not the intended RED. Run
 `29407342891` proved that `adb exec-out ... cat` alone can serialize Android's
-missing-file diagnostic as a non-empty host artifact, so the explicit
-device-side check is part of the provenance gate.
+missing-file diagnostic as a non-empty host artifact. Run `29408526627` then
+proved that API 29 `run-as` cannot directly execute the toybox `test` applet.
+The explicit check therefore passes one quoted remote command to `adb shell`
+and executes the `test` shell builtin through `/system/bin/sh`; this is part of
+the provenance gate.
 
 ---
 
