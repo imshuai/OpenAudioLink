@@ -4,6 +4,7 @@ import android.os.Build
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.openaudiolink.protocol.ProtocolConstants
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -23,6 +24,20 @@ class MediaCodecAacEncoderTest {
     @Test
     fun instrumentationRunsOnSupportedAndroid() {
         assertTrue(Build.VERSION.SDK_INT >= 29)
+    }
+
+    @Test
+    fun deterministicEncodedTestStreamProducesFourBoundedCandidates() {
+        val frames = encodeDeterministicTestStream()
+
+        assertEquals(4, frames.size)
+        frames.forEach { frame ->
+            assertTrue(frame.isNotEmpty())
+            assertTrue(
+                frame.size <=
+                    ProtocolConstants.MaxPacketSize - ProtocolConstants.AudioPayloadHeaderSize,
+            )
+        }
     }
 
     @Test
