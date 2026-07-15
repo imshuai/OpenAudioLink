@@ -1221,24 +1221,24 @@ Decode Frame
 
 PCM Buffer
 
-↓
+├─ Phase 1-Q → FakeAudioRenderer (complete 4096-byte PCM frames; ends here)
 
-Playback Queue
-
-↓
-
-Audio Device
+└─ Future audible playback → Playback Queue → Audio Device
 ```
 
-Every stage must succeed before continuing.
+Phase 1-Q ends when `FakeAudioRenderer` records each complete 4096-byte PCM
+frame; it has no audible playback. `Playback Queue` and `Audio Device` are the
+future audible-playback target.
 
-Decoder failures affect only the current frame.
+Phase 1-Q decoder failures terminate the current TCP session. Per-frame
+recovery is future policy.
 
 ---
 
 # Decoder Errors
 
-Examples:
+The following drop-and-continue examples and configurable threshold describe a
+future per-frame recovery policy:
 
 Unsupported Codec
 
@@ -1270,13 +1270,16 @@ Drop Frame
 
 Continue
 
-Decoder failures must never terminate the streaming session unless a configurable error threshold is exceeded.
+Phase 1-Q does not apply this policy; any decoder failure terminates the current
+TCP session.
 
 ---
 
 # Playback Queue
 
-Decoded PCM is inserted into a playback queue.
+This section describes the future audible-playback topology. Phase 1-Q has no
+playback queue or audio device; its decoded PCM path ends at
+`FakeAudioRenderer`.
 
 ```
 Network
@@ -1563,7 +1566,11 @@ No reordering algorithm is required in Version 1.
 
 Streaming ends after a STOP_STREAM packet.
 
-Receiver behavior:
+Phase 1-Q performs final decoder `Drain`, renders only complete 4096-byte PCM
+frames to `FakeAudioRenderer`, then closes the session. It has no playback
+queue or audio device.
+
+The future audible-playback target extends termination as follows:
 
 ```text
 Receive STOP_STREAM
@@ -2705,7 +2712,7 @@ Each handler should process exactly one packet type.
 
 Protocol state must remain thread-safe.
 
-Recommended ownership model.
+The following recommended multi-thread ownership model is a future topology.
 
 ```text
 Network Thread
@@ -2722,6 +2729,10 @@ Decoder Thread
 
 Playback Thread
 ```
+
+In Phase 1-Q, the same accepted-client thread owns protocol handling and the
+decoder lifecycle and passes complete PCM frames to the non-audible
+`FakeAudioRenderer`.
 
 Only one thread owns protocol state.
 

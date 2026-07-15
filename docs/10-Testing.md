@@ -656,7 +656,9 @@ Required manual release tests:
 
 # Windows Receiver Tests
 
-Windows tests verify the receiver service, protocol handling, audio playback and desktop integration.
+Current Windows tests cover the receiver service, protocol handling and decoded
+PCM integration through `FakeAudioRenderer`. Audible playback and broader
+desktop integration remain future work or manual validation, respectively.
 
 ## Phase 1-Q Runtime Decode Gate
 

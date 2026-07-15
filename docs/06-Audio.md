@@ -733,12 +733,15 @@ Bits:
 Phase 1-Q does not create a dedicated decoder thread or PCM queue. The
 accepted TCP session thread submits each packet to the concrete decoder; a
 packet may produce zero, one or many output chunks. A 4096-byte assembler
-combines arbitrary decoder output into PCM16 stereo frames, and session end
-calls `Drain` before the remaining assembled PCM is passed to the renderer.
+combines arbitrary decoder output into PCM16 stereo frames. At session end,
+delayed chunks returned by `Drain` continue through the assembler. Only
+complete 4096-byte frames are passed to `FakeAudioRenderer`; remaining partial
+PCM causes session failure.
 The dedicated decoder thread, PCM queue and recovery threshold remain future
 work; an audible renderer is also future work.
 
-Pipeline:
+The following pipeline and responsibilities describe the future dedicated-thread
+topology:
 
 ```text
 AAC Queue
@@ -781,7 +784,7 @@ on end of stream:
         PCMQueue.Push(chunk)
 ```
 
-This remains future runtime-integration pseudocode. Submit may return zero, one,
+This remains future dedicated-thread pseudocode. Submit may return zero, one,
 or many chunks; Drain is required before shutdown.
 
 The decoder must block efficiently when no data exists.
