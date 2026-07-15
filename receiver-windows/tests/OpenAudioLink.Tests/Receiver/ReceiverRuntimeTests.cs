@@ -59,7 +59,7 @@ namespace OpenAudioLink.Tests.Receiver
                     using (TcpClient client = Connect(runtime.Port))
                     {
                         NetworkStream stream = client.GetStream();
-                        WriteHelloAndStart(stream);
+                        WriteHelloAndStart(stream, (ulong)(session + 1));
 
                         for (int frame = 0; frame < 3; frame++)
                         {
@@ -101,15 +101,14 @@ namespace OpenAudioLink.Tests.Receiver
         public void CorruptAacClosesCurrentStreamAndAllowsHealthyReconnect()
         {
             byte[] encodedFrame = TestFixtures.Read("testdata/audio/aac-lc-48k-stereo-1024.raw");
-            byte[] truncatedFrame = new byte[encodedFrame.Length - 1];
-            Array.Copy(encodedFrame, truncatedFrame, truncatedFrame.Length);
+            byte[] truncatedFrame = { encodedFrame[0] };
 
             using (ReceiverRuntime runtime = ReceiverRuntime.StartLoopback())
             {
                 using (TcpClient corruptClient = Connect(runtime.Port))
                 {
                     NetworkStream stream = corruptClient.GetStream();
-                    WriteHelloAndStart(stream);
+                    WriteHelloAndStart(stream, 1UL);
                     Write(stream, ProtocolConstants.PacketTypeAudio, 3u, HandshakePayloads.Audio(
                         ProtocolConstants.CodecAacLc, 1u, 323456003UL, 21, truncatedFrame));
 
@@ -135,7 +134,7 @@ namespace OpenAudioLink.Tests.Receiver
                 using (TcpClient healthyClient = Connect(runtime.Port))
                 {
                     NetworkStream stream = healthyClient.GetStream();
-                    WriteHelloAndStart(stream);
+                    WriteHelloAndStart(stream, 2UL);
                     Write(stream, ProtocolConstants.PacketTypeAudio, 3u, HandshakePayloads.Audio(
                         ProtocolConstants.CodecAacLc, 1u, 423456003UL, 21, encodedFrame));
                     byte[] ping = HandshakePayloads.Ping(4u, 423456004UL);
@@ -166,12 +165,12 @@ namespace OpenAudioLink.Tests.Receiver
             return client;
         }
 
-        private static void WriteHelloAndStart(NetworkStream stream)
+        private static void WriteHelloAndStart(NetworkStream stream, ulong sessionId)
         {
             Write(stream, ProtocolConstants.PacketTypeHello, 1u, HandshakePayloads.Hello(
                 "Android Phone", "1.0.0", ProtocolConstants.PlatformAndroid, ProtocolConstants.CapabilityAacSupported));
             AssertPacket(stream, ProtocolConstants.PacketTypeWelcome, HandshakePayloads.Welcome(
-                ProtocolConstants.ResultSuccess, "Windows PC", "1.0.0", 1));
+                ProtocolConstants.ResultSuccess, "Windows PC", "1.0.0", sessionId));
             Write(stream, ProtocolConstants.PacketTypeStartStream, 2u, HandshakePayloads.StartStream(
                 ProtocolConstants.CodecAacLc, 48000u, 2, 192000u, 21));
             AssertPacket(stream, ProtocolConstants.PacketTypeStreamReady, HandshakePayloads.StreamReady(
