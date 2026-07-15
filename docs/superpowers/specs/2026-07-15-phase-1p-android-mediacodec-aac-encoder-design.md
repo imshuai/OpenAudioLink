@@ -564,7 +564,10 @@ raw blocks               0
 
 The Android test reads the completed file back, validates every boundary and raw payload, and requires no trailing bytes before exposing it to CI.
 
-The CI script copies it from app-private storage with `adb exec-out run-as com.openaudiolink` and requires a non-empty host file before upload.
+The CI script first requires a non-empty app-private file through `run-as`, then
+copies it with `adb exec-out run-as com.openaudiolink` and requires a non-empty
+host file before upload. The device-side check prevents a missing-file
+diagnostic from being mistaken for artifact bytes.
 
 The artifact is ephemeral and must not be checked into the repository.
 

@@ -1510,6 +1510,7 @@ jobs:
             adb logcat -c
             ./gradlew -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true :app:connectedDebugAndroidTest; TEST_STATUS=$?; adb logcat -d -s MediaCodecAacTest:I TestRunner:E AndroidJUnitRunner:E '*:S'; exit "$TEST_STATUS"
             adb shell pm path com.openaudiolink | grep -F 'package:'
+            adb shell run-as com.openaudiolink test -s files/mediacodec-aac-interop.adts
             adb exec-out run-as com.openaudiolink cat files/mediacodec-aac-interop.adts > "$GITHUB_WORKSPACE/mediacodec-aac-interop.adts"
             test -s "$GITHUB_WORKSPACE/mediacodec-aac-interop.adts"
       - uses: actions/upload-artifact@v4
@@ -1574,10 +1575,16 @@ Push exact HEAD. Expected:
 - `docs`: success.
 - standalone `windows` matrix: compiles and succeeds because the interop gate is absent there.
 - Android `unit`: success.
-- Android `media-codec`: native tests pass, then the `adb ... cat files/mediacodec-aac-interop.adts` line fails because no artifact is written yet.
+- Android `media-codec`: native tests pass, then the device-side
+  `test -s files/mediacodec-aac-interop.adts` line fails because no artifact is
+  written yet.
 - Android `windows-interop`: skipped because its dependency failed.
 
-Require that exact missing-file failure; unrelated C#, emulator, codec, or workflow errors are not the intended RED.
+Require that exact device-side missing-file failure; unrelated C#, emulator,
+codec, Windows parser, or workflow errors are not the intended RED. Run
+`29407342891` proved that `adb exec-out ... cat` alone can serialize Android's
+missing-file diagnostic as a non-empty host artifact, so the explicit
+device-side check is part of the provenance gate.
 
 ---
 
