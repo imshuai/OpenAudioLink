@@ -145,7 +145,8 @@ encoder checks.
 
 The wire boundary is smaller because the 19-byte `AUDIO` metadata header is
 part of the protocol payload. After the supplier returns and before writing any
-`AUDIO`, `HandshakeClient` preflights every candidate and requires:
+`AUDIO`, `HandshakeClient` requires a non-empty result and preflights every
+candidate:
 
 ```text
 1 <= Encoded Size <= MaxPacketSize - AudioPayloadHeaderSize
@@ -259,7 +260,8 @@ retains the existing exact packet oracle. Additional focused tests prove:
   `STREAM_READY`;
 - a four-frame supplier produces sequences `3..6`, `PING` sequence `7`, and
   `STOP_STREAM` sequence `8` with the complete exact packet table above;
-- empty or larger-than-65,517-byte candidates fail before any `AUDIO` write;
+- an empty result, empty candidate, or larger-than-65,517-byte candidate fails
+  before any `AUDIO` write;
 - a supplier exception is not misreported as successful protocol completion.
 
 The fixture is test data only. `FakeAacFrame.kt` is deleted from production.
@@ -503,8 +505,8 @@ Phase 1-R is complete only when:
   candidates on API 29.
 - All encoder operations and socket operations remain on the existing
   connection owner thread, with encoder close before `AUDIO` writes.
-- Every candidate is preflighted as non-empty and no larger than 65,517 bytes
-  before the first `AUDIO` write.
+- The supplied list is non-empty, and every candidate is preflighted as
+  non-empty and no larger than 65,517 bytes before the first `AUDIO` write.
 - Four candidates are packetized in output order with exact monotonic synthetic
   metadata and the complete fixed eight-packet oracle.
 - Rejected handshakes perform no encoder work; encoder failure closes the
