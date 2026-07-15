@@ -20,7 +20,11 @@ namespace OpenAudioLink.Receiver
         private long nextSessionId;
         private TcpClient currentClient;
 
-        private TcpReceiver(TcpListener listener, Action<byte[]> audioSink, Action streamStarted, Action streamEnded)
+        private TcpReceiver(
+            TcpListener listener,
+            Action<byte[]> audioSink,
+            Action streamStarted,
+            Action streamEnded)
         {
             this.listener = listener;
             this.audioSink = audioSink ?? (_ => { });
@@ -32,25 +36,43 @@ namespace OpenAudioLink.Receiver
 
         public int Port { get; }
 
-        public static TcpReceiver Start(IPAddress address, int port, Action<byte[]> audioSink = null, Action streamStarted = null, Action streamEnded = null)
+        public static TcpReceiver Start(
+            IPAddress address,
+            int port,
+            Action<byte[]> audioSink = null,
+            Action streamStarted = null,
+            Action streamEnded = null)
         {
             TcpListener listener = new TcpListener(address, port);
             listener.Start();
             return new TcpReceiver(listener, audioSink, streamStarted, streamEnded);
         }
 
-        public static TcpReceiver StartLoopback(Action<byte[]> audioSink = null, Action streamStarted = null, Action streamEnded = null)
+        public static TcpReceiver StartLoopback(
+            Action<byte[]> audioSink = null,
+            Action streamStarted = null,
+            Action streamEnded = null)
         {
             return Start(IPAddress.Loopback, 0, audioSink, streamStarted, streamEnded);
         }
 
         public void Dispose()
         {
-            if (Interlocked.Exchange(ref disposed, 1) == 0)
+            TcpClient client;
+            lock (lifecycleGate)
             {
-                listener.Stop();
-                Interlocked.Exchange(ref currentClient, null)?.Close();
+                if (disposed != 0)
+                {
+                    return;
+                }
+
+                disposed = 1;
+                client = currentClient;
+                currentClient = null;
             }
+
+            listener.Stop();
+            client?.Close();
         }
 
         private void AcceptLoop()
@@ -77,29 +99,51 @@ namespace OpenAudioLink.Receiver
 
         private void Handle(TcpClient client)
         {
+            bool ownsActiveSlot = false;
+            bool streamActive = false;
             using (client)
             {
-                NetworkStream stream = client.GetStream();
-                if (Interlocked.CompareExchange(ref active, 1, 0) != 0)
+                try
                 {
-                    try
+                    NetworkStream stream = client.GetStream();
+                    if (Interlocked.CompareExchange(ref active, 1, 0) != 0)
                     {
                         PacketReader.ReadPacket(stream);
                         byte[] busy = ReceiverSession.BusyWelcome();
                         stream.Write(busy, 0, busy.Length);
+                        return;
                     }
-                    catch (IOException) { }
-                    catch (PacketParseException) { }
-                    return;
-                }
+                    ownsActiveSlot = true;
 
-                try
-                {
-                    Interlocked.Exchange(ref currentClient, client);
+                    lock (lifecycleGate)
+                    {
+                        if (Volatile.Read(ref disposed) != 0)
+                        {
+                            return;
+                        }
+
+                        currentClient = client;
+                    }
+
                     ReceiverSession session = new ReceiverSession((ulong)Interlocked.Increment(ref nextSessionId), audioSink);
                     while (session.State != ReceiverSessionState.Stopped)
                     {
+                        ReceiverSessionState previousState = session.State;
                         byte[] response = session.Process(PacketReader.ReadPacket(stream));
+                        if (previousState == ReceiverSessionState.WaitingForStartStream && session.State == ReceiverSessionState.Streaming)
+                        {
+                            lock (lifecycleGate)
+                            {
+                                if (Volatile.Read(ref disposed) != 0)
+                                {
+                                    return;
+                                }
+
+                                streamStarted();
+                                streamActive = true;
+                            }
+                        }
+
                         if (response != null)
                         {
                             stream.Write(response, 0, response.Length);
@@ -111,8 +155,30 @@ namespace OpenAudioLink.Receiver
                 catch (PacketParseException) { }
                 finally
                 {
-                    Interlocked.CompareExchange(ref currentClient, null, client);
-                    Interlocked.Exchange(ref active, 0);
+                    if (streamActive)
+                    {
+                        try
+                        {
+                            lock (lifecycleGate)
+                            {
+                                streamEnded();
+                            }
+                        }
+                        catch (PacketParseException) { }
+                    }
+
+                    if (ownsActiveSlot)
+                    {
+                        lock (lifecycleGate)
+                        {
+                            if (ReferenceEquals(currentClient, client))
+                            {
+                                currentClient = null;
+                            }
+                        }
+
+                        Interlocked.Exchange(ref active, 0);
+                    }
                 }
             }
         }
