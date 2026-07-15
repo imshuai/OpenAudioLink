@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -21,6 +22,189 @@ namespace OpenAudioLink.Tests.Receiver
             Assert.IsNotNull(typeof(TcpReceiver).GetMethod(
                 "StartLoopback",
                 new[] { typeof(Action<byte[]>), typeof(Action), typeof(Action) }));
+        }
+
+        [TestMethod]
+        public void StreamCallbacksRunInOrderOnTheSessionThread()
+        {
+            List<string> events = new List<string>();
+            int startThread = 0;
+            int audioThread = 0;
+            int endThread = 0;
+            using (ManualResetEventSlim startEntered = new ManualResetEventSlim(false))
+            using (ManualResetEventSlim releaseStart = new ManualResetEventSlim(false))
+            using (ManualResetEventSlim endEntered = new ManualResetEventSlim(false))
+            using (TcpReceiver receiver = TcpReceiver.StartLoopback(
+                payload =>
+                {
+                    events.Add("audio");
+                    audioThread = Thread.CurrentThread.ManagedThreadId;
+                },
+                () =>
+                {
+                    events.Add("start");
+                    startThread = Thread.CurrentThread.ManagedThreadId;
+                    startEntered.Set();
+                    releaseStart.Wait(SocketTimeoutMilliseconds);
+                },
+                () =>
+                {
+                    events.Add("end");
+                    endThread = Thread.CurrentThread.ManagedThreadId;
+                    endEntered.Set();
+                }))
+            using (TcpClient client = Connect(receiver))
+            {
+                NetworkStream stream = client.GetStream();
+                CompleteHello(stream, 1UL);
+                Write(stream, ProtocolConstants.PacketTypeStartStream, 2u, StartStreamPayload());
+                Assert.IsTrue(startEntered.Wait(SocketTimeoutMilliseconds));
+
+                try
+                {
+                    stream.ReadTimeout = SocketTimeoutMilliseconds;
+                    AssertReadTimesOut(stream);
+                }
+                finally
+                {
+                    stream.ReadTimeout = SocketTimeoutMilliseconds;
+                    releaseStart.Set();
+                }
+
+                AssertPacket(stream, ProtocolConstants.PacketTypeStreamReady, StreamReadyPayload());
+                Write(stream, ProtocolConstants.PacketTypeAudio, 3u, CanonicalAudioPayload());
+                Write(stream, ProtocolConstants.PacketTypeStopStream, 4u, new byte[0]);
+                Assert.IsTrue(endEntered.Wait(SocketTimeoutMilliseconds));
+                CollectionAssert.AreEqual(new[] { "start", "audio", "end" }, events);
+                Assert.AreEqual(startThread, audioThread);
+                Assert.AreEqual(startThread, endThread);
+            }
+        }
+
+        [TestMethod]
+        public void StreamStartFailureClosesOnlyThatClientAndAllowsReconnect()
+        {
+            int starts = 0;
+            int ends = 0;
+            using (TcpReceiver receiver = TcpReceiver.StartLoopback(
+                null,
+                () =>
+                {
+                    if (Interlocked.Increment(ref starts) == 1)
+                    {
+                        throw new PacketParseException("test start failure");
+                    }
+                },
+                () => Interlocked.Increment(ref ends)))
+            {
+                using (TcpClient first = Connect(receiver))
+                {
+                    NetworkStream stream = first.GetStream();
+                    CompleteHello(stream, 1UL);
+                    Write(stream, ProtocolConstants.PacketTypeStartStream, 2u, StartStreamPayload());
+                    AssertClientClosed(stream);
+                }
+
+                using (TcpClient second = Connect(receiver))
+                {
+                    NetworkStream stream = second.GetStream();
+                    CompleteHandshake(stream, 2UL);
+                    Write(stream, ProtocolConstants.PacketTypeStopStream, 3u, new byte[0]);
+                    AssertClientClosed(stream);
+                }
+
+                Assert.AreEqual(2, starts);
+                Assert.AreEqual(1, ends);
+            }
+        }
+
+        [TestMethod]
+        public void AbruptDisconnectInvokesStreamEndedOnOwnerThread()
+        {
+            int startThread = 0;
+            int endThread = 0;
+            using (ManualResetEventSlim endEntered = new ManualResetEventSlim(false))
+            using (TcpReceiver receiver = TcpReceiver.StartLoopback(
+                null,
+                () => startThread = Thread.CurrentThread.ManagedThreadId,
+                () =>
+                {
+                    endThread = Thread.CurrentThread.ManagedThreadId;
+                    endEntered.Set();
+                }))
+            using (TcpClient client = Connect(receiver))
+            {
+                CompleteHandshake(client.GetStream(), 1UL);
+                client.Close();
+                Assert.IsTrue(endEntered.Wait(SocketTimeoutMilliseconds));
+                Assert.AreEqual(startThread, endThread);
+            }
+        }
+
+        [TestMethod]
+        public void BusyClientDoesNotInvokeStreamLifecycle()
+        {
+            int starts = 0;
+            int ends = 0;
+            using (TcpReceiver receiver = TcpReceiver.StartLoopback(
+                null,
+                () => Interlocked.Increment(ref starts),
+                () => Interlocked.Increment(ref ends)))
+            using (TcpClient first = Connect(receiver))
+            using (TcpClient second = Connect(receiver))
+            {
+                CompleteHandshake(first.GetStream(), 1UL);
+                NetworkStream secondStream = second.GetStream();
+                Write(secondStream, ProtocolConstants.PacketTypeHello, 1u, HandshakePayloads.Hello("Android Phone 2", "1.0.0", ProtocolConstants.PlatformAndroid, ProtocolConstants.CapabilityAacSupported));
+                AssertPacket(secondStream, ProtocolConstants.PacketTypeWelcome, HandshakePayloads.Welcome(ProtocolConstants.ResultReceiverBusy, "Windows PC", "1.0.0", 0));
+                Assert.AreEqual(1, starts);
+
+                Write(first.GetStream(), ProtocolConstants.PacketTypeStopStream, 3u, new byte[0]);
+                AssertClientClosed(first.GetStream());
+                Assert.AreEqual(1, ends);
+            }
+        }
+
+        [TestMethod]
+        public void DisposeBeforeStartClosesClientWithoutStartingStream()
+        {
+            int starts = 0;
+            int ends = 0;
+            using (TcpReceiver receiver = TcpReceiver.StartLoopback(
+                null,
+                () => Interlocked.Increment(ref starts),
+                () => Interlocked.Increment(ref ends)))
+            using (TcpClient client = Connect(receiver))
+            {
+                CompleteHello(client.GetStream(), 1UL);
+                receiver.Dispose();
+                AssertClientClosed(client.GetStream());
+                Assert.AreEqual(0, starts);
+                Assert.AreEqual(0, ends);
+            }
+        }
+
+        [TestMethod]
+        public void DisposeDuringStreamInvokesStreamEndedOnOwnerThread()
+        {
+            int startThread = 0;
+            int endThread = 0;
+            using (ManualResetEventSlim endEntered = new ManualResetEventSlim(false))
+            using (TcpReceiver receiver = TcpReceiver.StartLoopback(
+                null,
+                () => startThread = Thread.CurrentThread.ManagedThreadId,
+                () =>
+                {
+                    endThread = Thread.CurrentThread.ManagedThreadId;
+                    endEntered.Set();
+                }))
+            using (TcpClient client = Connect(receiver))
+            {
+                CompleteHandshake(client.GetStream(), 1UL);
+                receiver.Dispose();
+                Assert.IsTrue(endEntered.Wait(SocketTimeoutMilliseconds));
+                Assert.AreEqual(startThread, endThread);
+            }
         }
 
         [TestMethod]
@@ -133,15 +317,64 @@ namespace OpenAudioLink.Tests.Receiver
             using (TcpClient client = Connect(receiver))
             {
                 NetworkStream stream = client.GetStream();
-
-                Write(stream, ProtocolConstants.PacketTypeHello, 1u, HandshakePayloads.Hello("Android Phone", "1.0.0", ProtocolConstants.PlatformAndroid, ProtocolConstants.CapabilityAacSupported));
-                AssertPacket(stream, ProtocolConstants.PacketTypeWelcome, HandshakePayloads.Welcome(ProtocolConstants.ResultSuccess, "Windows PC", "1.0.0", sessionId));
-
-                Write(stream, ProtocolConstants.PacketTypeStartStream, 2u, HandshakePayloads.StartStream(ProtocolConstants.CodecAacLc, 48000u, 2, 192000u, 21));
-                AssertPacket(stream, ProtocolConstants.PacketTypeStreamReady, HandshakePayloads.StreamReady(ProtocolConstants.StreamResultSuccess, ProtocolConstants.CodecAacLc, 48000u, 2));
+                CompleteHandshake(stream, sessionId);
 
                 Write(stream, ProtocolConstants.PacketTypeStopStream, 3u, new byte[0]);
-                Assert.AreEqual(0, stream.Read(new byte[1], 0, 1));
+                AssertClientClosed(stream);
+            }
+        }
+
+        private static void CompleteHello(NetworkStream stream, ulong sessionId, string clientName = "Android Phone")
+        {
+            Write(stream, ProtocolConstants.PacketTypeHello, 1u, HandshakePayloads.Hello(clientName, "1.0.0", ProtocolConstants.PlatformAndroid, ProtocolConstants.CapabilityAacSupported));
+            AssertPacket(stream, ProtocolConstants.PacketTypeWelcome, HandshakePayloads.Welcome(ProtocolConstants.ResultSuccess, "Windows PC", "1.0.0", sessionId));
+        }
+
+        private static void CompleteHandshake(NetworkStream stream, ulong sessionId)
+        {
+            CompleteHello(stream, sessionId);
+            Write(stream, ProtocolConstants.PacketTypeStartStream, 2u, StartStreamPayload());
+            AssertPacket(stream, ProtocolConstants.PacketTypeStreamReady, StreamReadyPayload());
+        }
+
+        private static byte[] StartStreamPayload()
+        {
+            return HandshakePayloads.StartStream(ProtocolConstants.CodecAacLc, 48000u, 2, 192000u, 21);
+        }
+
+        private static byte[] StreamReadyPayload()
+        {
+            return HandshakePayloads.StreamReady(ProtocolConstants.StreamResultSuccess, ProtocolConstants.CodecAacLc, 48000u, 2);
+        }
+
+        private static byte[] CanonicalAudioPayload()
+        {
+            return HandshakePayloads.Audio(ProtocolConstants.CodecAacLc, 1u, 123456789UL, 21, TestFixtures.Read("testdata/audio/aac-lc-48k-stereo-1024.raw"));
+        }
+
+        private static void AssertReadTimesOut(NetworkStream stream)
+        {
+            try
+            {
+                stream.ReadByte();
+                Assert.Fail("Expected a timed-out read while stream start callback is blocked.");
+            }
+            catch (IOException exception)
+            {
+                SocketException socketException = exception.InnerException as SocketException;
+                Assert.IsNotNull(socketException);
+                Assert.AreEqual(SocketError.TimedOut, socketException.SocketErrorCode);
+            }
+        }
+
+        private static void AssertClientClosed(NetworkStream stream)
+        {
+            try
+            {
+                Assert.AreEqual(0, stream.ReadByte());
+            }
+            catch (IOException)
+            {
             }
         }
 
