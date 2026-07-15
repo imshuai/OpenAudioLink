@@ -1324,8 +1324,9 @@ Stereo
 ```
 
 The standalone proof returns every currently available PCM chunk and Drain
-returns delayed output. A later runtime-integration phase will forward PCM to
-the playback queue.
+returns delayed output. Phase 1-Q assembles these outputs into 4096-byte frames
+and passes them to `FakeAudioRenderer`; only a playback queue and audible output
+remain future work.
 
 ---
 
