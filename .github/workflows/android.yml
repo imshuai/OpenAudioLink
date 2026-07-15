@@ -44,6 +44,9 @@ jobs:
             test "$(adb shell getprop ro.build.version.sdk | tr -d '\r')" = 29 && echo "Android API level: 29"
             adb logcat -c
             ./gradlew -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true :app:connectedDebugAndroidTest; TEST_STATUS=$?; adb logcat -d -s MediaCodecAacTest:I TestRunner:E AndroidJUnitRunner:E '*:S'; exit "$TEST_STATUS"
+            adb shell "run-as com.openaudiolink /system/bin/sh -c 'test -s files/mediacodec-runtime-wire.bin'"
+            adb exec-out run-as com.openaudiolink cat files/mediacodec-runtime-wire.bin > "$GITHUB_WORKSPACE/mediacodec-runtime-wire.bin"
+            test -s "$GITHUB_WORKSPACE/mediacodec-runtime-wire.bin"
             adb shell pm path com.openaudiolink | grep -F 'package:'
             adb shell "run-as com.openaudiolink /system/bin/sh -c 'test -s files/mediacodec-aac-interop.adts'"
             adb exec-out run-as com.openaudiolink cat files/mediacodec-aac-interop.adts > "$GITHUB_WORKSPACE/mediacodec-aac-interop.adts"
@@ -51,7 +54,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: mediacodec-aac-interop
-          path: mediacodec-aac-interop.adts
+          path: |
+            mediacodec-aac-interop.adts
+            mediacodec-runtime-wire.bin
           if-no-files-found: error
           retention-days: 1
 
