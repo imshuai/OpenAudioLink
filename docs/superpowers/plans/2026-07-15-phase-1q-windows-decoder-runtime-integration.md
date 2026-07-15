@@ -4,7 +4,7 @@
 
 **Goal:** Route canonical TCP `AUDIO` packets through the existing Windows Media Foundation AAC decoder and record real 48 kHz stereo PCM in the existing fake renderer, with decoder ownership scoped to one TCP stream.
 
-**Architecture:** Extend `TcpReceiver` with two optional stream-lifecycle callbacks executed on the accepted-client thread. `ReceiverRuntime` uses them to create, feed, drain, and dispose one `MediaFoundationAacDecoder`; a private 4096-byte assembler maps arbitrary PCM output chunks to FIFO wire metadata before calling `FakeAudioRenderer.Render`. No new worker, decoder interface, PCM queue, dependency, Android behavior, or audible playback is added.
+**Architecture:** Retain the existing `TcpReceiver` overloads and add full lifecycle overloads with `streamStarted` and `streamEnded` callbacks executed on the accepted-client thread. Existing callers remain source-compatible and already compiled binaries remain binary-compatible. `ReceiverRuntime` uses the new overloads to create, feed, drain, and dispose one `MediaFoundationAacDecoder`; a private 4096-byte assembler maps arbitrary PCM output chunks to FIFO wire metadata before calling `FakeAudioRenderer.Render`. No new worker, decoder interface, PCM queue, dependency, Android behavior, or audible playback is added.
 
 **Tech Stack:** C#/.NET Framework 4.8, MSTest, Windows Media Foundation `IMFTransform`, TCP loopback, GitHub Actions `windows-2022` x86/x64, Python documentation/fixture checks, Markdown.
 
@@ -297,7 +297,17 @@ private TcpReceiver(
 }
 ```
 
-Extend `Start` and `StartLoopback` by appending `Action streamStarted = null, Action streamEnded = null`; retain all existing parameter order and defaults. Do not invoke the callbacks yet.
+Retain the existing `Start` and `StartLoopback` overloads unchanged, and add
+the complete lifecycle overloads:
+
+```csharp
+public static TcpReceiver Start(IPAddress address, int port, Action<byte[]> audioSink, Action streamStarted, Action streamEnded)
+public static TcpReceiver StartLoopback(Action<byte[]> audioSink, Action streamStarted, Action streamEnded)
+```
+
+The existing overloads delegate to the new full overload with `null` lifecycle
+callbacks. Do not invoke the callbacks yet. This preserves source compatibility
+for existing callers and binary compatibility for already compiled callers.
 
 - [ ] **Step 4: Commit and prove API GREEN**
 

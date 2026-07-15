@@ -565,9 +565,10 @@ decoded through:
 Windows Media Foundation
 ```
 
-Phase 1-O proves only a standalone `MediaFoundationAacDecoder`; the documented
-`IAudioDecoder` interface and factory tree below are future runtime-integration
-architecture, not Phase 1-O code.
+Phase 1-Q uses the concrete `MediaFoundationAacDecoder` directly in the
+accepted TCP session thread. There is no `IAudioDecoder` abstraction or
+decoder factory in this runtime path; the interface and factory tree below are
+retained only as future extensibility points.
 
 ---
 
@@ -729,9 +730,13 @@ Bits:
 
 # Decoder Thread
 
-This thread and queue topology remains future runtime-integration design. The
-Phase 1-O wrapper is owner-thread-only and does not create a decoder thread or
-own AAC/PCM queues.
+Phase 1-Q does not create a dedicated decoder thread or PCM queue. The
+accepted TCP session thread submits each packet to the concrete decoder; a
+packet may produce zero, one or many output chunks. A 4096-byte assembler
+combines arbitrary decoder output into PCM16 stereo frames, and session end
+calls `Drain` before the remaining assembled PCM is passed to the renderer.
+The dedicated decoder thread, PCM queue and recovery threshold remain future
+work; an audible renderer is also future work.
 
 Pipeline:
 

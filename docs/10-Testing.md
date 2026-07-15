@@ -658,6 +658,22 @@ Required manual release tests:
 
 Windows tests verify the receiver service, protocol handling, audio playback and desktop integration.
 
+## Phase 1-Q Runtime Decode Gate
+
+The Windows runtime gate runs on windows-2022 for both x86 and x64. It covers:
+
+- Decoder startup before a successful `STREAM_READY`.
+- Ordered 4096-byte non-silent PCM output with exact metadata.
+- `PING`/`PONG`.
+- `STOP_STREAM` and final decoder `Drain`.
+- Client disconnect.
+- Busy-session rejection.
+- Reconnect after the prior session ends.
+- WinForms rendered-frame count.
+
+This gate does not prove audible playback, asynchronous backpressure, latency,
+the recovery threshold, or Windows 7 compatibility.
+
 ---
 
 # Windows Unit Tests
@@ -1142,9 +1158,9 @@ required. The native oracle is exactly 24576 bytes of 48 kHz stereo PCM with
 non-zero energy in both channels, not a PCM hash.
 
 GitHub Windows CI runs the same native test in verified x86 and x64 testhost
-processes on windows-2022. This proves standalone decode and COM ABI only;
-`ReceiverRuntime` still uses `FakeAacDecoder`; native-decoder integration and
-audible playback remain unimplemented.
+processes on windows-2022. Together with the Phase 1-Q Runtime Decode Gate,
+this proves native decode and runtime integration with the fake renderer; it
+does not prove audible playback.
 
 ---
 

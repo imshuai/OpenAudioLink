@@ -29,7 +29,7 @@ Roadmap 不是承诺清单。
 | Architecture documents | Active |
 | Protocol specification | Version 1 implemented and tested |
 | Android Sender | Phase 1 in progress; fake transport and standalone AAC encoder |
-| Windows Receiver | Phase 1 in progress; fake runtime and standalone AAC decoder |
+| Windows Receiver | Phase 1 in progress; TCP runtime AAC decode with fake renderer |
 | Testing strategy | Active in CI |
 | Public release | Not started |
 

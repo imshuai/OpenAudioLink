@@ -66,12 +66,14 @@ it from `ReceiverRuntime.Dispose` would violate that contract.
 The accepted client's existing `TcpReceiver.Handle` thread owns the decoder.
 No decoder worker, executor, timer, or second queue is added.
 
-`TcpReceiver.Start` and `StartLoopback` gain two optional callbacks alongside
-the existing audio sink:
+`TcpReceiver.Start` and `StartLoopback` retain their existing overloads and add
+a complete lifecycle overload with two callbacks:
 
 ```csharp
-Action streamStarted
-Action streamEnded
+public static TcpReceiver Start(IPAddress address, int port, Action<byte[]> audioSink = null)
+public static TcpReceiver Start(IPAddress address, int port, Action<byte[]> audioSink, Action streamStarted, Action streamEnded)
+public static TcpReceiver StartLoopback(Action<byte[]> audioSink = null)
+public static TcpReceiver StartLoopback(Action<byte[]> audioSink, Action streamStarted, Action streamEnded)
 ```
 
 Their exact lifecycle is:
@@ -264,9 +266,11 @@ policy is added.
 
 ## Public Surface
 
-The only production API expansion is the two optional stream-lifecycle
-callbacks on `TcpReceiver.Start` and `StartLoopback`. Existing callers that
-provide only `audioSink` remain source-compatible.
+The only production API expansion is a full lifecycle overload for each of
+`TcpReceiver.Start` and `StartLoopback`, accepting `streamStarted` and
+`streamEnded` callbacks. The existing overloads remain unchanged, so existing
+callers are source-compatible and already compiled binaries are
+binary-compatible; the new overloads provide both lifecycle callbacks.
 
 `ReceiverRuntime` keeps its existing public surface:
 

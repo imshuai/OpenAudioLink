@@ -1195,6 +1195,9 @@ Does not include:
 
 Receivers should verify that `Payload Length == 19 + Encoded Size` before decoding.
 
+For Version 1 AAC-LC, `Encoded Size` MUST be greater than zero because
+`Encoded Data` carries one complete raw AAC access unit.
+
 ---
 
 # Audio Decoder Pipeline

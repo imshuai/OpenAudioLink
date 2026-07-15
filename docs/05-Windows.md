@@ -1298,10 +1298,14 @@ MF_MT_USER_DATA: 00 00 FE 00 00 00 00 00 00 00 00 00 11 90
 The first 12 `MF_MT_USER_DATA` bytes are the little-endian `HEAACWAVEINFO`
 tail; the final two bytes are `AudioSpecificConfig`.
 
-Phase 1-O proves this media type and native decode path in a standalone
-MediaFoundationAacDecoder on Windows CI. ReceiverRuntime still uses
-FakeAacDecoder; session ownership, worker-thread integration and playback
-remain later phases.
+Phase 1-Q integrates the concrete `MediaFoundationAacDecoder` into
+`ReceiverRuntime`. For each supported TCP stream, the receiver creates,
+submits to, drains and disposes the decoder on the same accepted-client
+`ThreadPool` thread. Decoder output chunks may have arbitrary sizes; the
+receiver assembles them into 4096-byte PCM16 stereo frames and passes those
+frames to `FakeAudioRenderer`. This does not provide audible playback. Slow
+decode blocks reads for that session. A dedicated decoder/playback topology is
+future work.
 
 ---
 
