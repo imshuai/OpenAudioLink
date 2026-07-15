@@ -357,11 +357,23 @@ public void StreamCallbacksRunInOrderOnTheSessionThread()
         {
             Assert.IsTrue(startEntered.Wait(SocketTimeoutMilliseconds),
                 "Timed out waiting for stream start callback.");
-            Assert.IsFalse(stream.DataAvailable,
-                "STREAM_READY was written before streamStarted completed.");
+            stream.ReadTimeout = 100;
+            try
+            {
+                int unexpected = stream.ReadByte();
+                Assert.Fail(
+                    "STREAM_READY byte was readable before streamStarted completed: "
+                    + unexpected);
+            }
+            catch (IOException ex) when (
+                ex.InnerException is SocketException socket
+                && socket.SocketErrorCode == SocketError.TimedOut)
+            {
+            }
         }
         finally
         {
+            stream.ReadTimeout = SocketTimeoutMilliseconds;
             releaseStart.Set();
         }
         AssertPacket(stream, ProtocolConstants.PacketTypeStreamReady,
