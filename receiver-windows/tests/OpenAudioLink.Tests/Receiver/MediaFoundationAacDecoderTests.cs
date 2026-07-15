@@ -14,6 +14,14 @@ namespace OpenAudioLink.Tests.Receiver
     {
         private const string ContinuousFixture =
             "testdata/audio/aac-lc-48k-stereo-6frames.adts";
+        private const string MediaCodecInteropEnabled =
+            "OAL_MEDIACODEC_INTEROP";
+        private const string MediaCodecInteropPath =
+            "OAL_MEDIACODEC_ADTS_PATH";
+        private const int MediaCodecInputFrameCount = 12;
+        private const int MediaCodecAddedCandidateCount = 1;
+        private const int MediaCodecExpectedOutputCandidateCount =
+            MediaCodecInputFrameCount + MediaCodecAddedCandidateCount;
 
         [TestMethod]
         public void CiUsesExpectedProcessArchitecture()
@@ -55,17 +63,59 @@ namespace OpenAudioLink.Tests.Receiver
         }
 
         [TestMethod]
-        public void AdtsSplitterRejectsInvalidSyncCrcTrailingByteAndWrongFrameCount()
+        public void AdtsSplitterRejectsInvalidHeaderTrailingByteAndWrongFrameCount()
         {
-            Assert.ThrowsException<InvalidDataException>(() => SplitAdts(
-                new byte[] { 0x00, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00 }));
-            Assert.ThrowsException<InvalidDataException>(() => SplitAdts(
-                new byte[] { 0xff, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00 }));
+            byte[] invalidSync = TestFixtures.Read(ContinuousFixture);
+            invalidSync[0] = 0;
+            Assert.ThrowsException<InvalidDataException>(() => SplitAdts(invalidSync));
+
+            byte[] invalidSecondSyncByte = TestFixtures.Read(ContinuousFixture);
+            invalidSecondSyncByte[1] = (byte)(invalidSecondSyncByte[1] & 0x0f);
+            Assert.ThrowsException<InvalidDataException>(() => SplitAdts(invalidSecondSyncByte));
+
+            byte[] crcBearing = TestFixtures.Read(ContinuousFixture);
+            crcBearing[1] = (byte)(crcBearing[1] & 0xfe);
+            Assert.ThrowsException<InvalidDataException>(() => SplitAdts(crcBearing));
+
+            byte[] wrongMpegVersion = TestFixtures.Read(ContinuousFixture);
+            wrongMpegVersion[1] = (byte)(wrongMpegVersion[1] | 0x08);
+            Assert.ThrowsException<InvalidDataException>(() => SplitAdts(wrongMpegVersion));
+
+            byte[] wrongLayer = TestFixtures.Read(ContinuousFixture);
+            wrongLayer[1] = (byte)(wrongLayer[1] | 0x02);
+            Assert.ThrowsException<InvalidDataException>(() => SplitAdts(wrongLayer));
+
+            byte[] wrongProfile = TestFixtures.Read(ContinuousFixture);
+            wrongProfile[2] = (byte)(wrongProfile[2] & 0x3f);
+            Assert.ThrowsException<InvalidDataException>(() => SplitAdts(wrongProfile));
+
+            byte[] wrongRate = TestFixtures.Read(ContinuousFixture);
+            wrongRate[2] = (byte)((wrongRate[2] & 0xc3) | (4 << 2));
+            Assert.ThrowsException<InvalidDataException>(() => SplitAdts(wrongRate));
+
+            byte[] wrongChannels = TestFixtures.Read(ContinuousFixture);
+            wrongChannels[2] = (byte)(wrongChannels[2] & 0xfe);
+            wrongChannels[3] = (byte)((wrongChannels[3] & 0x3f) | (1 << 6));
+            Assert.ThrowsException<InvalidDataException>(() => SplitAdts(wrongChannels));
+
+            byte[] multipleRawBlocks = TestFixtures.Read(ContinuousFixture);
+            multipleRawBlocks[6] = (byte)(multipleRawBlocks[6] | 1);
+            Assert.ThrowsException<InvalidDataException>(() => SplitAdts(multipleRawBlocks));
+
+            byte[] invalidLength = TestFixtures.Read(ContinuousFixture);
+            invalidLength[3] = (byte)(invalidLength[3] & 0xfc);
+            invalidLength[4] = 0;
+            invalidLength[5] = (byte)((invalidLength[5] & 0x1f) | (7 << 5));
+            Array.Resize(ref invalidLength, 7);
+            Assert.ThrowsException<InvalidDataException>(() => SplitAdts(invalidLength, 1));
 
             byte[] trailing = TestFixtures.Read(ContinuousFixture);
             Array.Resize(ref trailing, trailing.Length + 1);
             Assert.ThrowsException<InvalidDataException>(() => SplitAdts(trailing));
             Assert.ThrowsException<InvalidDataException>(() => SplitAdts(new byte[0]));
+            Assert.ThrowsException<InvalidDataException>(() => SplitAdts(
+                TestFixtures.Read(ContinuousFixture),
+                5));
         }
 
         [TestMethod]
@@ -132,10 +182,50 @@ namespace OpenAudioLink.Tests.Receiver
             });
         }
 
+        [TestMethod]
+        public void AndroidMediaCodecArtifactDecodesToCompleteStereoPcm()
+        {
+            string enabled = Environment.GetEnvironmentVariable(MediaCodecInteropEnabled);
+            if (string.IsNullOrEmpty(enabled))
+            {
+                return;
+            }
+            Assert.AreEqual("1", enabled);
+
+            string path = Environment.GetEnvironmentVariable(MediaCodecInteropPath);
+            Assert.IsFalse(string.IsNullOrEmpty(path), "interop artifact path is missing");
+            Assert.IsTrue(File.Exists(path), "interop artifact does not exist: " + path);
+
+            IReadOnlyList<byte[]> frames = SplitAdts(
+                File.ReadAllBytes(path),
+                MediaCodecExpectedOutputCandidateCount);
+            RunMta(() =>
+            {
+                foreach (byte[] frame in frames)
+                {
+                    Assert.AreEqual(
+                        4096,
+                        DecodeFrames(new[] { frame }).Length,
+                        "MediaCodec output candidate is not exactly one AAC access unit");
+                }
+                byte[] pcm = DecodeFrames(frames);
+                AssertPcm(
+                    pcm,
+                    checked(MediaCodecExpectedOutputCandidateCount * 4096));
+                Console.WriteLine(
+                    "MediaCodec interop decoded " + frames.Count + " access units to "
+                    + pcm.Length + " PCM bytes.");
+            });
+        }
+
         private static byte[] DecodeFixture()
         {
+            return DecodeFrames(SplitAdts(TestFixtures.Read(ContinuousFixture)));
+        }
+
+        private static byte[] DecodeFrames(IReadOnlyList<byte[]> frames)
+        {
             List<byte> pcm = new List<byte>();
-            IReadOnlyList<byte[]> frames = SplitAdts(TestFixtures.Read(ContinuousFixture));
             using (MediaFoundationAacDecoder decoder = new MediaFoundationAacDecoder())
             {
                 foreach (byte[] frame in frames)
@@ -155,9 +245,9 @@ namespace OpenAudioLink.Tests.Receiver
             }
         }
 
-        private static void AssertPcm(byte[] pcm)
+        private static void AssertPcm(byte[] pcm, int expectedLength = 24576)
         {
-            Assert.AreEqual(24576, pcm.Length);
+            Assert.AreEqual(expectedLength, pcm.Length);
             long leftEnergy = 0;
             long rightEnergy = 0;
             for (int offset = 0; offset < pcm.Length; offset += 4)
@@ -171,7 +261,9 @@ namespace OpenAudioLink.Tests.Receiver
             Assert.IsTrue(rightEnergy > 0, "right channel is silent");
         }
 
-        private static IReadOnlyList<byte[]> SplitAdts(byte[] data)
+        private static IReadOnlyList<byte[]> SplitAdts(
+            byte[] data,
+            int? expectedFrameCount = 6)
         {
             List<byte[]> frames = new List<byte[]>();
             int offset = 0;
@@ -185,15 +277,33 @@ namespace OpenAudioLink.Tests.Receiver
                 {
                     throw new InvalidDataException("invalid ADTS sync");
                 }
+                if ((data[offset + 1] & 0x0e) != 0)
+                {
+                    throw new InvalidDataException("ADTS must use MPEG-4 layer 0");
+                }
                 if ((data[offset + 1] & 1) != 1)
                 {
                     throw new InvalidDataException("CRC-bearing ADTS is unsupported");
+                }
+                int profile = (data[offset + 2] >> 6) & 3;
+                int sampleRateIndex = (data[offset + 2] >> 2) & 15;
+                int channelConfiguration =
+                    ((data[offset + 2] & 1) << 2)
+                    | ((data[offset + 3] >> 6) & 3);
+                if (profile != 1 || sampleRateIndex != 3 || channelConfiguration != 2)
+                {
+                    throw new InvalidDataException(
+                        "ADTS must be AAC-LC, 48 kHz, stereo");
+                }
+                if ((data[offset + 6] & 3) != 0)
+                {
+                    throw new InvalidDataException("ADTS frame must contain one raw block");
                 }
                 int length =
                     ((data[offset + 3] & 3) << 11)
                     | (data[offset + 4] << 3)
                     | ((data[offset + 5] >> 5) & 7);
-                if (length <= 7 || offset + length > data.Length)
+                if (length <= 7 || length > data.Length - offset)
                 {
                     throw new InvalidDataException("truncated ADTS frame");
                 }
@@ -202,9 +312,10 @@ namespace OpenAudioLink.Tests.Receiver
                 frames.Add(raw);
                 offset += length;
             }
-            if (frames.Count != 6)
+            if (expectedFrameCount.HasValue && frames.Count != expectedFrameCount.Value)
             {
-                throw new InvalidDataException("continuous fixture must contain six frames");
+                throw new InvalidDataException(
+                    "ADTS frame count must be " + expectedFrameCount.Value);
             }
             return frames;
         }

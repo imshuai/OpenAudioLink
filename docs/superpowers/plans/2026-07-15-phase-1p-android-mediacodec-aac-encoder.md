@@ -1333,14 +1333,25 @@ a regression check:
 [TestMethod]
 public void AdtsSplitterRejectsInvalidHeaderTrailingByteAndWrongFrameCount()
 {
-    Assert.ThrowsException<InvalidDataException>(() => SplitAdts(
-        new byte[] { 0x00, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00 }));
-    Assert.ThrowsException<InvalidDataException>(() => SplitAdts(
-        new byte[] { 0xff, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00 }));
+    byte[] invalidSync = TestFixtures.Read(ContinuousFixture);
+    invalidSync[0] = 0;
+    Assert.ThrowsException<InvalidDataException>(() => SplitAdts(invalidSync));
+
+    byte[] invalidSecondSyncByte = TestFixtures.Read(ContinuousFixture);
+    invalidSecondSyncByte[1] = (byte)(invalidSecondSyncByte[1] & 0x0f);
+    Assert.ThrowsException<InvalidDataException>(() => SplitAdts(invalidSecondSyncByte));
+
+    byte[] crcBearing = TestFixtures.Read(ContinuousFixture);
+    crcBearing[1] = (byte)(crcBearing[1] & 0xfe);
+    Assert.ThrowsException<InvalidDataException>(() => SplitAdts(crcBearing));
 
     byte[] wrongMpegVersion = TestFixtures.Read(ContinuousFixture);
     wrongMpegVersion[1] = (byte)(wrongMpegVersion[1] | 0x08);
     Assert.ThrowsException<InvalidDataException>(() => SplitAdts(wrongMpegVersion));
+
+    byte[] wrongLayer = TestFixtures.Read(ContinuousFixture);
+    wrongLayer[1] = (byte)(wrongLayer[1] | 0x02);
+    Assert.ThrowsException<InvalidDataException>(() => SplitAdts(wrongLayer));
 
     byte[] wrongProfile = TestFixtures.Read(ContinuousFixture);
     wrongProfile[2] = (byte)(wrongProfile[2] & 0x3f);
@@ -1359,10 +1370,20 @@ public void AdtsSplitterRejectsInvalidHeaderTrailingByteAndWrongFrameCount()
     multipleRawBlocks[6] = (byte)(multipleRawBlocks[6] | 1);
     Assert.ThrowsException<InvalidDataException>(() => SplitAdts(multipleRawBlocks));
 
+    byte[] invalidLength = TestFixtures.Read(ContinuousFixture);
+    invalidLength[3] = (byte)(invalidLength[3] & 0xfc);
+    invalidLength[4] = 0;
+    invalidLength[5] = (byte)((invalidLength[5] & 0x1f) | (7 << 5));
+    Array.Resize(ref invalidLength, 7);
+    Assert.ThrowsException<InvalidDataException>(() => SplitAdts(invalidLength, 1));
+
     byte[] trailing = TestFixtures.Read(ContinuousFixture);
     Array.Resize(ref trailing, trailing.Length + 1);
     Assert.ThrowsException<InvalidDataException>(() => SplitAdts(trailing));
     Assert.ThrowsException<InvalidDataException>(() => SplitAdts(new byte[0]));
+    Assert.ThrowsException<InvalidDataException>(() => SplitAdts(
+        TestFixtures.Read(ContinuousFixture),
+        5));
 }
 ```
 
@@ -1411,7 +1432,7 @@ private static IReadOnlyList<byte[]> SplitAdts(
             ((data[offset + 3] & 3) << 11)
             | (data[offset + 4] << 3)
             | ((data[offset + 5] >> 5) & 7);
-        if (length <= 7 || offset + length > data.Length)
+        if (length <= 7 || length > data.Length - offset)
         {
             throw new InvalidDataException("truncated ADTS frame");
         }
@@ -1503,7 +1524,6 @@ jobs:
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
-      - uses: microsoft/setup-msbuild@v2
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x

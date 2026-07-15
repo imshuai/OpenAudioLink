@@ -32,7 +32,7 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Run API 29 instrumentation tests
+      - name: Run API 29 MediaCodec tests and export AAC
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 29
@@ -45,3 +45,35 @@ jobs:
             adb logcat -c
             ./gradlew -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true :app:connectedDebugAndroidTest; TEST_STATUS=$?; adb logcat -d -s MediaCodecAacTest:I TestRunner:E AndroidJUnitRunner:E '*:S'; exit "$TEST_STATUS"
             adb shell pm path com.openaudiolink | grep -F 'package:'
+            adb exec-out run-as com.openaudiolink cat files/mediacodec-aac-interop.adts > "$GITHUB_WORKSPACE/mediacodec-aac-interop.adts"
+            test -s "$GITHUB_WORKSPACE/mediacodec-aac-interop.adts"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mediacodec-aac-interop
+          path: mediacodec-aac-interop.adts
+          if-no-files-found: error
+          retention-days: 1
+
+  windows-interop:
+    needs: media-codec
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - uses: actions/download-artifact@v4
+        with:
+          name: mediacodec-aac-interop
+          path: interop
+      - name: Decode Android MediaCodec output
+        shell: pwsh
+        env:
+          OAL_TEST_ARCHITECTURE: x64
+          OAL_MEDIACODEC_INTEROP: '1'
+          OAL_MEDIACODEC_ADTS_PATH: ${{ github.workspace }}\interop\mediacodec-aac-interop.adts
+        run: |
+          if (!(Test-Path -LiteralPath $env:OAL_MEDIACODEC_ADTS_PATH)) {
+            throw "MediaCodec AAC artifact is missing"
+          }
+          dotnet test receiver-windows/OpenAudioLink.sln -c Release --logger "console;verbosity=detailed" -- RunConfiguration.TargetPlatform=x64
