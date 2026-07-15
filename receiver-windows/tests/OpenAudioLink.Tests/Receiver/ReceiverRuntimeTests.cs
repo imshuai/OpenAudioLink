@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -40,47 +41,119 @@ namespace OpenAudioLink.Tests.Receiver
         [TestMethod]
         public void ClientAudioFramesAreDecodedAndRendered()
         {
-            using (ReceiverRuntime runtime = ReceiverRuntime.StartLoopback())
-            using (TcpClient client = Connect(runtime.Port))
+            byte[] encodedFrame = TestFixtures.Read("testdata/audio/aac-lc-48k-stereo-1024.raw");
+            ulong[] captureTimestamps =
             {
-                NetworkStream stream = client.GetStream();
+                123456003UL,
+                123477336UL,
+                123498670UL,
+                223456003UL,
+                223477336UL,
+                223498670UL,
+            };
 
-                Write(stream, ProtocolConstants.PacketTypeHello, 1u, HandshakePayloads.Hello("Android Phone", "1.0.0", ProtocolConstants.PlatformAndroid, ProtocolConstants.CapabilityAacSupported));
-                AssertPacket(stream, ProtocolConstants.PacketTypeWelcome, HandshakePayloads.Welcome(ProtocolConstants.ResultSuccess, "Windows PC", "1.0.0", 1));
-
-                Write(stream, ProtocolConstants.PacketTypeStartStream, 2u, HandshakePayloads.StartStream(ProtocolConstants.CodecAacLc, 48000u, 2, 192000u, 21));
-                AssertPacket(stream, ProtocolConstants.PacketTypeStreamReady, HandshakePayloads.StreamReady(ProtocolConstants.StreamResultSuccess, ProtocolConstants.CodecAacLc, 48000u, 2));
-
-                byte[] encodedFrame = TestFixtures.Read("testdata/audio/aac-lc-48k-stereo-1024.raw");
-                ulong[] captureTimestamps =
+            using (ReceiverRuntime runtime = ReceiverRuntime.StartLoopback())
+            {
+                for (int session = 0; session < 2; session++)
                 {
-                    123456003UL,
-                    123477336UL,
-                    123498670UL,
-                };
+                    using (TcpClient client = Connect(runtime.Port))
+                    {
+                        NetworkStream stream = client.GetStream();
+                        WriteHelloAndStart(stream);
 
-                for (int i = 0; i < captureTimestamps.Length; i++)
-                {
-                    byte[] payload = HandshakePayloads.Audio(ProtocolConstants.CodecAacLc, (uint)(i + 1), captureTimestamps[i], 21, encodedFrame);
-                    Write(stream, ProtocolConstants.PacketTypeAudio, 3u + (uint)i, payload);
+                        for (int frame = 0; frame < 3; frame++)
+                        {
+                            int index = session * 3 + frame;
+                            byte[] payload = HandshakePayloads.Audio(
+                                ProtocolConstants.CodecAacLc,
+                                (uint)(index + 1),
+                                captureTimestamps[index],
+                                21,
+                                encodedFrame);
+                            Write(stream, ProtocolConstants.PacketTypeAudio, 3u + (uint)frame, payload);
+                        }
+
+                        byte[] ping = HandshakePayloads.Ping(5u, captureTimestamps[session * 3 + 2] + 1);
+                        Write(stream, ProtocolConstants.PacketTypePing, 6u, ping);
+                        AssertPacket(stream, ProtocolConstants.PacketTypePong, ping);
+                        Write(stream, ProtocolConstants.PacketTypeStopStream, 7u, new byte[0]);
+                        AssertStreamClosed(client);
+                    }
                 }
 
-                byte[] ping = HandshakePayloads.Ping(5u, 123498671UL);
-                Write(stream, ProtocolConstants.PacketTypePing, 6u, ping);
-                AssertPacket(stream, ProtocolConstants.PacketTypePong, ping);
-
-                Assert.AreEqual(3, runtime.Renderer.RenderedCount);
+                Assert.AreEqual(6, runtime.Renderer.RenderedCount);
                 Assert.AreEqual(0, runtime.Queue.Count);
                 IReadOnlyList<FakePcmFrame> renderedFrames = runtime.Renderer.RenderedFrames;
-                for (int i = 0; i < captureTimestamps.Length; i++)
+                Assert.AreEqual(6, renderedFrames.Count);
+                for (int i = 0; i < renderedFrames.Count; i++)
                 {
                     Assert.AreEqual((uint)(i + 1), renderedFrames[i].FrameNumber);
                     Assert.AreEqual(captureTimestamps[i], renderedFrames[i].CaptureTimestamp);
                     Assert.AreEqual((ushort)21, renderedFrames[i].FrameDuration);
-                    CollectionAssert.AreEqual(encodedFrame, renderedFrames[i].PcmBytes);
+                    Assert.AreEqual(4096, renderedFrames[i].PcmBytes.Length);
+                    Assert.IsTrue(ChannelEnergy(renderedFrames[i].PcmBytes, 0) > 0);
+                    Assert.IsTrue(ChannelEnergy(renderedFrames[i].PcmBytes, 1) > 0);
+                }
+            }
+        }
+
+        [TestMethod]
+        public void CorruptAacClosesCurrentStreamAndAllowsHealthyReconnect()
+        {
+            byte[] encodedFrame = TestFixtures.Read("testdata/audio/aac-lc-48k-stereo-1024.raw");
+            byte[] truncatedFrame = new byte[encodedFrame.Length - 1];
+            Array.Copy(encodedFrame, truncatedFrame, truncatedFrame.Length);
+
+            using (ReceiverRuntime runtime = ReceiverRuntime.StartLoopback())
+            {
+                using (TcpClient corruptClient = Connect(runtime.Port))
+                {
+                    NetworkStream stream = corruptClient.GetStream();
+                    WriteHelloAndStart(stream);
+                    Write(stream, ProtocolConstants.PacketTypeAudio, 3u, HandshakePayloads.Audio(
+                        ProtocolConstants.CodecAacLc, 1u, 323456003UL, 21, truncatedFrame));
+
+                    try
+                    {
+                        Write(stream, ProtocolConstants.PacketTypeStopStream, 4u, new byte[0]);
+                    }
+                    catch (SocketException exception)
+                    {
+                        AssertNotTimedOut(exception);
+                    }
+                    catch (IOException exception)
+                    {
+                        AssertNotTimedOut(exception);
+                    }
+
+                    AssertStreamClosed(corruptClient);
                 }
 
-                Write(stream, ProtocolConstants.PacketTypeStopStream, 7u, new byte[0]);
+                Assert.AreEqual(0, runtime.Renderer.RenderedCount);
+                Assert.AreEqual(0, runtime.Queue.Count);
+
+                using (TcpClient healthyClient = Connect(runtime.Port))
+                {
+                    NetworkStream stream = healthyClient.GetStream();
+                    WriteHelloAndStart(stream);
+                    Write(stream, ProtocolConstants.PacketTypeAudio, 3u, HandshakePayloads.Audio(
+                        ProtocolConstants.CodecAacLc, 1u, 423456003UL, 21, encodedFrame));
+                    byte[] ping = HandshakePayloads.Ping(4u, 423456004UL);
+                    Write(stream, ProtocolConstants.PacketTypePing, 5u, ping);
+                    AssertPacket(stream, ProtocolConstants.PacketTypePong, ping);
+                    Write(stream, ProtocolConstants.PacketTypeStopStream, 6u, new byte[0]);
+                    AssertStreamClosed(healthyClient);
+                }
+
+                Assert.AreEqual(1, runtime.Renderer.RenderedCount);
+                Assert.AreEqual(0, runtime.Queue.Count);
+                FakePcmFrame renderedFrame = runtime.Renderer.RenderedFrames[0];
+                Assert.AreEqual((uint)1, renderedFrame.FrameNumber);
+                Assert.AreEqual(423456003UL, renderedFrame.CaptureTimestamp);
+                Assert.AreEqual((ushort)21, renderedFrame.FrameDuration);
+                Assert.AreEqual(4096, renderedFrame.PcmBytes.Length);
+                Assert.IsTrue(ChannelEnergy(renderedFrame.PcmBytes, 0) > 0);
+                Assert.IsTrue(ChannelEnergy(renderedFrame.PcmBytes, 1) > 0);
             }
         }
 
@@ -91,6 +164,59 @@ namespace OpenAudioLink.Tests.Receiver
             client.SendTimeout = SocketTimeoutMilliseconds;
             client.Connect(IPAddress.Loopback, port);
             return client;
+        }
+
+        private static void WriteHelloAndStart(NetworkStream stream)
+        {
+            Write(stream, ProtocolConstants.PacketTypeHello, 1u, HandshakePayloads.Hello(
+                "Android Phone", "1.0.0", ProtocolConstants.PlatformAndroid, ProtocolConstants.CapabilityAacSupported));
+            AssertPacket(stream, ProtocolConstants.PacketTypeWelcome, HandshakePayloads.Welcome(
+                ProtocolConstants.ResultSuccess, "Windows PC", "1.0.0", 1));
+            Write(stream, ProtocolConstants.PacketTypeStartStream, 2u, HandshakePayloads.StartStream(
+                ProtocolConstants.CodecAacLc, 48000u, 2, 192000u, 21));
+            AssertPacket(stream, ProtocolConstants.PacketTypeStreamReady, HandshakePayloads.StreamReady(
+                ProtocolConstants.StreamResultSuccess, ProtocolConstants.CodecAacLc, 48000u, 2));
+        }
+
+        private static void AssertStreamClosed(TcpClient client)
+        {
+            try
+            {
+                int value = client.GetStream().ReadByte();
+                Assert.AreEqual(-1, value, "ReceiverRuntime did not reach EOF.");
+            }
+            catch (SocketException exception)
+            {
+                AssertNotTimedOut(exception);
+            }
+            catch (IOException exception)
+            {
+                AssertNotTimedOut(exception);
+            }
+        }
+
+        private static void AssertNotTimedOut(Exception exception)
+        {
+            for (Exception current = exception; current != null; current = current.InnerException)
+            {
+                SocketException socketException = current as SocketException;
+                if (socketException != null && socketException.SocketErrorCode == SocketError.TimedOut)
+                {
+                    Assert.Fail("ReceiverRuntime socket operation timed out.");
+                }
+            }
+        }
+
+        private static long ChannelEnergy(byte[] pcmBytes, int channel)
+        {
+            long energy = 0;
+            for (int i = channel * 2; i + 1 < pcmBytes.Length; i += 4)
+            {
+                short sample = (short)(pcmBytes[i] | (pcmBytes[i + 1] << 8));
+                energy += Math.Abs((int)sample);
+            }
+
+            return energy;
         }
 
         private static void Write(NetworkStream stream, byte type, uint sequence, byte[] payload)
