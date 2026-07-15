@@ -198,6 +198,7 @@ class HandshakeClientTest {
         val invalidSources = listOf<() -> List<ByteArray>>(
             { emptyList() },
             { listOf(ByteArray(0)) },
+            { fixtureFrames(1) + listOf(ByteArray(0)) },
             { listOf(ByteArray(ProtocolConstants.MaxPacketSize -
                 ProtocolConstants.AudioPayloadHeaderSize + 1)) },
         )
